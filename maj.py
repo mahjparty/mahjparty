@@ -221,18 +221,18 @@ class Game:
     return player_name
 
   def add_player(self, player_id, player_name):
-    if len(self.players) >= self.max_players:
-      return "Game is full"
-
     player_name = self.validate_name(player_name)
 
     if player_id in self.players:
-      if player_name:
-        old_name = self.players[player_id]
+      old_name = self.players[player_id]
+      if player_name and player_name != old_name:
         self.log("{} has renamed to {}".format(old_name, player_name))
         self.players[player_id].name = player_name
       return None
     else:
+      if len(self.players) >= self.max_players:
+        return "Game is full"
+
       self.log("{} has joined the game.".format(player_name))
       self.players[player_id] = Player(player_name)
       self.player_seq.append(player_id)
@@ -358,7 +358,7 @@ class Game:
 
   def draw_tile(self, player_id):
     if self.phase != GamePhase.START_TURN:
-      return "Wrong game phase to discard a tile"
+      return "Wrong game phase to draw a tile"
 
     if not self.is_player_turn(player_id):
       return "Not your turn"

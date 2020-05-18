@@ -6,14 +6,17 @@ import string
 import random
 import datetime
 import re
+from flask_cors import CORS
+
 
 app = Flask(__name__)
+CORS(app)
 
 games = {}
 
 def rand_id():
   letters = string.ascii_lowercase + string.digits + string.ascii_uppercase
-  return ''.join([random.choice(letters) for i in range(10)])
+  return ''.join([random.choice(letters) for i in range(16)])
 
 @app.route('/')
 def hello_world():
@@ -89,7 +92,7 @@ def add_player():
   if res is not None:
     return err(res)
 
-  return send({"success": True})
+  return send(game.get_state(player_id))
 
 @app.route('/create_game')
 def create_game():
