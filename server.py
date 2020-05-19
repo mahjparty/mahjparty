@@ -130,6 +130,22 @@ def offer_tiles():
   else:
     return err(res)
 
+@app.route('/rearrange_tiles')
+def rearrange_tiles():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
+  tiles = parse_tiles(request.args.get('tiles'))
+  if tiles is None:
+    return err("Invalid tiles")
+
+  res = game.rearrange_tiles(player_id, tiles)
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
+
 @app.route('/suggest_trade')
 def suggest_trade():
   game, player_id = get_game_player()

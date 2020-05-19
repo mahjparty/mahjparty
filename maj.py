@@ -47,19 +47,32 @@ class Player:
     res = []
     for choice in choices:
       tiles, sel = self.pick_tile(tiles, choice)
-      res.append(sel)
+      if sel is not None:
+        res.append(sel)
 
     return tiles, res
 
   # merge two sets of tiles into one group (on the left)
   def merge_left(self, left, right):
-    return (left+right, [])
+    return left+right, []
 
   def offer_tiles(self, offer_tiles):
     if self.offered:
       self.hand, self.offered = self.merge_left(self.hand, self.offered)
 
     self.hand, self.offered = self.pick_tiles(self.hand, offer_tiles)
+
+  def rearrange_tiles(self, tiles):
+    new_hand = []
+    for choice in tiles:
+      self.hand, sel = self.pick_tile(self.hand, choice)
+      if sel:
+        new_hand.append(sel)
+      self.offered, sel = self.pick_tile(self.offered, choice)
+      if sel:
+        new_hand.append(sel)
+
+    self.hand, _ = self.merge_left(self.hand, new_hand)
 
   def send_offer(self, other):
     other.take_tiles(self.offered)
@@ -195,12 +208,19 @@ class Game:
       "top_discard": str(self.top_discard),
       "next_player": self.next_player,
       "your_turn": self.is_player_turn(pid),
+      "player_idx": self.find_player_idx(pid),
       "call_idx": self.call_idx,
       "maj": self.maj,
       "log": self.show_log(),
       "call_wait_duration": self.call_wait_duration,
       "draw_wait_duration": self.draw_wait_duration,
       "all_waived": self.all_waived(),
+      "can_call": [
+        self.can_call(i, False) for i in range(len(self.player_seq))
+      ],
+      "can_call_maj": [
+        self.can_call(i, True) for i in range(len(self.player_seq))
+      ],
       "timeout_elapsed": self.timeout_elapsed()
     }
 
@@ -224,9 +244,9 @@ class Game:
     player_name = self.validate_name(player_name)
 
     if player_id in self.players:
-      old_name = self.players[player_id]
+      old_name = self.players[player_id].name
       if player_name and player_name != old_name:
-        self.log("{} has renamed to {}".format(old_name, player_name))
+        self.log("{} has renamed to {}.".format(old_name, player_name))
         self.players[player_id].name = player_name
       return None
     else:
@@ -293,7 +313,7 @@ class Game:
           self.log("{} and {} agreed to trade {} tiles.".format(p1.name, p2.name, num))
 
         if skip:
-          self.phase = GamePhase.MAIN
+          self.start_main()
         else:
           self.phase = GamePhase.TRADING_OPTIONAL_EXECUTE
 
@@ -324,6 +344,9 @@ class Game:
       p1.send_offer(p2)
       p2.send_offer(p1)
 
+    self.start_main()
+
+  def start_main(self):
     self.phase = GamePhase.DISCARD
     self.next_player = 0 # East
 
@@ -354,6 +377,11 @@ class Game:
     self.call_idx = None
     self.maj = False
     self.start_ts = datetime.datetime.now()
+    return None
+
+  def rearrange_tiles(self, player_id, tiles):
+    player = self.players[player_id]
+    player.rearrange_tiles(tiles)
     return None
 
   def draw_tile(self, player_id):
@@ -423,17 +451,26 @@ class Game:
 
     return None
 
+  def can_call(self, idx, is_maj):
+    pid = self.player_seq[idx]
+    if self.is_prev_turn(pid):
+      return False
+    if pid in self.waived:
+      return False
+    if self.call_idx is None:
+      return True
+    if idx == self.call_idx:
+      return False
+
+    return self.has_call_priority(idx, is_maj, self.call_idx, self.maj)
+
   def all_waived(self):
     if (self.phase != GamePhase.START_TURN and
         self.phase != GamePhase.PENDING_CALL):
         return None #n/a
 
-    if self.call_idx is None:
-      pcall = None
-    else:
-      pcall = self.player_seq[self.call_idx]
-    for pid in self.player_seq:
-      if not self.is_prev_turn(pid) and not pid in self.waived and pid != pcall:
+    for i in range(len(self.player_seq)):
+      if self.can_call(i, True):
         return False
 
     return True
