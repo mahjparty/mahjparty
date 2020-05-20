@@ -84,6 +84,8 @@ def add_player():
   player_name = request.args.get('player_name')
   if game_id is None or player_id is None:
     return err("Missing game_id/player_id")
+  player_id = clean(player_id)
+  player_name = clean(player_name or "")[:20]
   game = games.get(game_id)
   if game is None:
     return err("Invalid game id")
@@ -104,15 +106,11 @@ def create_game():
 
 @app.route('/game_state')
 def get_game_state():
-  game_id = request.args.get('game_id')
-  player_id = request.args.get('player_id')
-  if game_id is None or player_id is None:
-    return err("Missing game_id/player_id")
-  game = games.get(game_id)
+  game, player_id = get_game_player()
   if game is None:
-    return err("Invalid game id")
-  else:
-    return send(game.get_state(player_id))
+    return err(player_id)
+
+  return send(game.get_state(player_id))
 
 @app.route('/offer_tiles')
 def offer_tiles():
@@ -224,11 +222,47 @@ def end_call_phase():
   if game is None:
     return err(player_id)
 
+  res = game.end_call_phase(player_id)
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
+
+@app.route('/show_tiles')
+def show_tiles():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
   tiles = parse_tiles(request.args.get('tiles'))
   if tiles is None:
     return err("Invalid tiles")
 
-  res = game.end_call_phase(player_id, tiles)
+  res = game.show_tiles(player_id, tiles)
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
+
+@app.route('/claim_maj')
+def claim_maj():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
+  res = game.claim_maj(player_id)
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
+
+@app.route('/retract_maj')
+def retract_maj():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
+  res = game.retract_maj(player_id)
   if res is None:
     return send(game.get_state(player_id))
   else:

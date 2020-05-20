@@ -63,6 +63,7 @@ function Game(game_id, player_id) {
     var height = scaleTile(width);
     this.tid = t[1];
     this.str = tile_str;
+    this.draggable = true;
 
     this.getX = function() {
       return x;
@@ -87,6 +88,17 @@ function Game(game_id, player_id) {
         ctx.setLineDash([1,1]);
         ctx.strokeStyle='#000';
         ctx.strokeRect(x, y, width, height);
+      }
+    }
+
+    this.hoverRender = function(xx, yy, twid) {
+      if(this.contains(xx,yy) && img.is_ready) {
+        var thei = scaleTile(twid);
+        var newx = x+width/2-twid/2;
+        var newy = y+width/2-thei/2;
+        newx = Math.min(Math.max(newx, 0), wid-twid);
+        newy = Math.min(Math.max(newy, 0), hei-thei);
+        ctx.drawImage(img, newx, newy, twid, thei);
       }
     }
 
@@ -138,8 +150,7 @@ function Game(game_id, player_id) {
         ctx.fillStyle = '#CCC';
       }
       ctx.fillRect(x, y, width, height);
-      var twid = ctx.measureText(text).width;
-      drawText(text, "button", x+width*0.5-twid*0.5, y+height*0.5+7);
+      drawText(text, "button", x+width*0.5, y+height*0.5+7);
     }
   }
 
@@ -166,6 +177,13 @@ function Game(game_id, player_id) {
   var drop_targets = [];
   var buttons = [];
   var pressed_btn = null;
+  var pending_action = null;
+
+  var buttonWidth = 140;
+  var logWidth = 450;
+  var numLogs = 10;
+  var logLineHeight = 15;
+  var logHeight = logLineHeight*numLogs+25;
 
   function init() {
     that.rescale();
@@ -183,6 +201,10 @@ function Game(game_id, player_id) {
     });
   }
 
+  function centerX() {
+    return (wid-logWidth)*0.5;
+  }
+
   this.rescale = function() {
     if(Math.abs(document.documentElement.clientWidth-wid) > 2 ||
        Math.abs(document.documentElement.clientHeight-hei) > 2) {
@@ -191,7 +213,7 @@ function Game(game_id, player_id) {
       canvas.width = wid;
       canvas.height = hei;
 
-      tileWidth = Math.min(wid / 14, 197);
+      tileWidth = Math.min((wid-logWidth) / 14, 197);
       tileHeight = scaleTile(tileWidth);
     }
   }
@@ -201,22 +223,28 @@ function Game(game_id, player_id) {
       return;
     }
     var phase = that.state.phase;
+
+    checkPendingAction();
+
     clear();
+    showDiscardPile();
+    showSidePanel();
     showPlayers();
-    showDragTile();
     showHand();
     showLog();
     showSuggestTrade();
     showDiscard();
     showMainButtons();
-    drawText("Your name: " + player_name(that.state.player_idx), "player_name", wid/2, 15);
-    if(phase == "TRADING_MANDATORY" || phase == "TRADING_OPTIONAL_EXECUTE") {
-      showOffer();
-    }
+    showHover();
+    showDragTile();
+    drawText("Your name: " + player_name(that.state.player_idx), "player_name", centerX(), 15);
+    showOffer();
     if(drag_tile_obj) {
       drag_tile_obj.render();
     }
-    if(phase == "WAITING_PLAYERS") {
+    if(isDisqualified()) {
+      mainText("Maj retracted.");
+    } else if(phase == "WAITING_PLAYERS") {
       mainText("Waiting for players.");
     } else if(phase == "TRADING_MANDATORY") {
       var dirs = [1, 2, -1, -1, 2, 1]
@@ -247,16 +275,67 @@ function Game(game_id, player_id) {
       }
     } else if (phase == "START_TURN") {
       if(that.state.your_turn) {
-        if(that.state.timeout_elapsed || that.state.all_wavied) {
+        if(pending_action == "draw_tile") {
+          var rem = Math.max(Math.ceil(that.state.timeout_deadline-now()), 0);
+          mainText("Waiting... (" + rem + ")");
+        } else if (that.state.top_discard) {
           mainText("Call or draw?");
+        } else {
+          mainText("Ready to draw?");
         }
-      } else if(that.state.can_call_maj[that.state.player_idx]) {
+      } else if(that.state.can_call_maj[that.state.player_idx] && that.state.top_discard) {
         mainText("Call?");
       } else {
         mainText("Waiting for " + player_name(that.state.next_player));
       }
+    } else if (phase == "PENDING_CALL") {
+      var rem = Math.max(Math.ceil(that.state.timeout_deadline-now()), 0);
+      mainText("Waiting... (" + rem + ")");
+    } else if (phase == "PENDING_SHOW") {
+      if(that.state.your_turn) {
+        mainText("Reveal a group.");
+      } else {
+        var nextp = player_name(that.state.next_player);
+        mainText("Waiting for " + nextp + " to reveal.");
+      }
+    } else if (phase == "SHOWING_MAJ") {
+      if(that.state.your_turn) {
+        mainText("Reveal a group.");
+      } else {
+        var nextp = player_name(that.state.next_player);
+        mainText("Waiting for " + nextp + " to reveal maj.");
+      }
+    } else if (phase == "WINNER") {
+      var nextp = player_name(that.state.next_player);
+      mainText(nextp + " won with Maj!");
+    } else if (phase == "WALL") {
+      mainText("It's a wall game.");
     } else {
       mainText(that.state.phase);
+    }
+  }
+
+  function isDisqualified() {
+    return that.state.disqualified[that.state.player_idx];
+  }
+
+  function now() {
+    return (+new Date())*0.001;
+  }
+
+  function checkPendingAction() {
+    var phase = that.state.phase;
+    if(phase == "START_TURN" && pending_action == "draw_tile") {
+      if (that.state.all_waived || that.state.timeout_elapsed) {
+        gquery("draw_tile", {});
+        pending_action = null;
+      }
+    }
+    if(phase == "PENDING_CALL") {
+      if ((that.state.all_waived || that.state.timeout_elapsed) &&
+          that.state.call_idx == that.state.player_idx) {
+        gquery("end_call_phase", {});
+      }
     }
   }
 
@@ -278,35 +357,78 @@ function Game(game_id, player_id) {
     buttons = [];
   }
 
+  function showSidePanel() {
+    ctx.fillStyle = '#EEE';
+    ctx.fillRect(wid-logWidth, 0, logWidth, hei);
+  }
+
   function showLog() {
     var log = that.state.log;
-    var logWidth = 350;
-    drawText("Game Log", "log_title", wid-logWidth, 15);
-    for(var i = 0; i < log.length; i++) {
-      drawText(log[i][1], "log", wid - logWidth, i*15+30);
+    var base = hei-logHeight+15;
+    drawText("Game Log", "heading", wid-logWidth+5, base);
+    for(var i = 0; i < log.length && i < numLogs; i++) {
+      drawText(log[i][1], "log", wid-logWidth+5, base+i*logLineHeight+15);
     }
   }
 
   function showPlayers() {
     var pl = that.state.player_names;
     var phase = that.state.phase;
-    drawText("Players", "heading", 0, 15);
+    drawText("Players", "heading", wid-logWidth+5, 15);
+    var y = 40;
     for(var i = 0; i < pl.length; i++) {
       var typ = "name";
       if(i == that.state.next_player && ["DISCARD","START_TURN","PENDING_CALL"].indexOf(phase) !== -1) {
         typ = "bold_name";
       }
       var name = pl[i];
-      if(i == 0 && phase != "WAITING_PLAYERS") {
-        name += " (East)";
+      var dirs = ["East", "North", "West", "South"];
+      if(phase != "WAITING_PLAYERS") {
+        name += " (" + dirs[i] + ")";
       }
-      drawText(name, typ, 0, 20*i+40);
+      var basex = wid-logWidth+5;
+      var x = basex;
+      drawText(name, typ, x, y);
+      if(phase != "WAITING_PLAYERS") {
+        y += 5;
+        var twid = tileWidth*0.5;
+        var thei = scaleTile(twid);
+        var board = that.state.boards[i];
+        for(var j = 0; j < board.length; j++) {
+          var group = board[j];
+          if(x+group.length*twid >= wid) {
+            x = basex;
+            y += thei+1;
+          }
+          for(var k = 0; k < group.length; k++) {
+            var tile = new Tile(group[k], x, y, twid);
+            tile.render();
+            tile.draggable = false;
+            tiles.push(tile);
+            x += twid;
+          }
+          x += twid*0.2;
+        }
+        if(board.length > 0) {
+          y += thei;
+        }
+      }
+      y += 20;
+    }
+  }
+
+  function showHover() {
+    if(drag_tile == null) {
+      for(var i = 0; i < tiles.length; i++) {
+        if(!tiles[i].draggable) {
+          tiles[i].hoverRender(mx, my, tileWidth);
+        }
+      }
     }
   }
 
   function showSuggestTrade() {
     if(that.state.phase == "TRADING_OPTIONAL_SUGGEST") {
-      var buttonWidth = 100;
       for(let i = 0; i <= 3; i++) {
         var x = wid/2 + buttonWidth * (i-2);
         var y =  hei*0.25 + 50;
@@ -362,6 +484,9 @@ function Game(game_id, player_id) {
   }
 
   function showOffer() {
+    if(isDisqualified()) {
+      return;
+    }
     var phase = that.state.phase;
     var num_offer = that.state.num_offered;
     if((phase == "TRADING_OPTIONAL_EXECUTE" && num_offer > 0) ||
@@ -370,12 +495,12 @@ function Game(game_id, player_id) {
         num_offer = 3;
       }
 
-      var x = wid/2 - num_offer/2*tileWidth;
+      var x = centerX() - num_offer/2*tileWidth;
       var y = hei - tileHeight*2.5;
       var off = that.state.offered;
       for(let i = 0; i < num_offer; i++) {
         var drop_target = new DropTarget(x, y, tileWidth, function(drag_tile) {
-          offerTile(drag_tile, i);
+          offerTile(drag_tile, i, false);
         });
         drop_target.render();
         drop_targets.push(drop_target);
@@ -387,12 +512,56 @@ function Game(game_id, player_id) {
         }
         x += tileWidth;
       }
+    } else if((phase == "PENDING_SHOW" || phase == "SHOWING_MAJ")
+       && that.state.your_turn) {
+      var off = that.state.offered;
+      var force_target = (off.length==0);
+      var num_tiles = Math.max(off.length, 1);
+      var x = centerX() - num_tiles*0.5*tileWidth;
+      var y = hei-tileHeight*2.5;
+
+      var drop_target = new DropTarget(x-tileWidth, y, tileWidth, function(drag_tile) {
+        offerTile(drag_tile, 0, true);
+      });
+
+      if(drag_tile_obj && drop_target.contains(
+        drag_tile_obj.centerX(), drag_tile_obj.centerY())) {
+        drop_target.render();
+        drop_targets.push(drop_target);
+      }
+
+
+      for(let i = 0; i < off.length + 1; i++) {
+        drop_target = new DropTarget(x, y, tileWidth, function(drag_tile) {
+          offerTile(drag_tile, i, true);
+        });
+
+        if((i == 0 && force_target) ||
+          (drag_tile_obj && drop_target.contains(
+          drag_tile_obj.centerX(), drag_tile_obj.centerY()))) {
+          drop_target.render();
+          drop_targets.push(drop_target);
+          x += tileWidth;
+        }
+
+        if(i < off.length &&
+           (!drag_tile || off[i] != drag_tile)) {
+          var tile = new Tile(off[i], x, y, tileWidth);
+          tile.render();
+          tiles.push(tile);
+
+          x += tileWidth;
+        }
+      }
     }
   }
 
   function showDiscard() {
+    if(isDisqualified()) {
+      return;
+    }
     var phase = that.state.phase;
-    var x = wid/2 - 0.5*tileWidth;
+    var x = centerX() - 0.5*tileWidth;
     var y = hei - tileHeight*2.5;
     if(phase == "DISCARD" && that.state.your_turn) {
       var drop_target = new DropTarget(x, y, tileWidth, function(drag_tile) {
@@ -407,28 +576,68 @@ function Game(game_id, player_id) {
     }
   }
 
+  function showDiscardPile() {
+    var d = that.state.discard_pile;
+    if(d.length > 0) {
+      var twid = tileWidth / 2;
+      var thei = scaleTile(twid);
+      drawText("Discard pile", "heading", 5, 15);
+      var tilePerRow = Math.floor((wid-logWidth) / twid);
+      var x = 0;
+      var y = 20;
+      for(var i = 0; i < d.length; i++) {
+        var tile = new Tile(d[i], x, y, twid);
+        tile.render();
+        tile.draggable = false;
+        tiles.push(tile);
+        x += twid;
+        if ((i+1) % tilePerRow == 0) {
+          x = 0;
+          y += thei;
+        }
+      }
+    }
+  }
+
   function showMainButtons() {
+    if(pending_action!==null || isDisqualified()) {
+      return;
+    }
     var btnIds = [];
-    if((that.state.phase == "START_TURN" || that.state.phase == "PENDING_CALL")) {
+    var phase = that.state.phase;
+    if(that.state.top_discard &&
+       (phase == "START_TURN" || phase == "PENDING_CALL")) {
       if (that.state.can_call[that.state.player_idx]) {
         btnIds.push("call");
       }
       if (that.state.can_call_maj[that.state.player_idx]) {
         btnIds.push("call_maj");
-        if(!that.state.your_turn){
+        if(!that.state.your_turn || phase != "START_TURN"){
           btnIds.push("waive");
         }
       }
     }
-    if(that.state.phase == "START_TURN" && that.state.your_turn) {
+    if(phase == "START_TURN" && that.state.your_turn) {
       btnIds.push("draw");
+    }
+    if((phase == "PENDING_SHOW" && that.state.your_turn &&
+       that.state.offered.length >= 3) ||
+       (phase == "SHOWING_MAJ" && that.state.your_turn &&
+       that.state.offered.length >= 1)) {
+      btnIds.push("show");
+    }
+    if(phase == "DISCARD" && that.state.your_turn) {
+      btnIds.push("claim_maj");
+    }
+    if(phase == "WINNER" && that.state.your_turn) {
+      btnIds.push("retract_maj");
     }
     var btns = {
       "draw": {
         "text": "Draw",
         "callback": function() {
-          // TODO: queue until able
-          gquery("draw_tile", {});
+          gquery("waive_call", {});
+          pending_action = "draw_tile";
         }
       },
       "call": {
@@ -449,10 +658,29 @@ function Game(game_id, player_id) {
           gquery("waive_call", {});
         }
       },
+      "show": {
+        "text": "Reveal",
+        "callback": function() {
+          gquery("show_tiles",
+            {"tiles": sendTiles(that.state.offered)});
+          that.state.offered = [];
+        }
+      },
+      "claim_maj": {
+        "text": "Claim Maj",
+        "callback": function() {
+          gquery("claim_maj", {});
+        }
+      },
+      "retract_maj": {
+        "text": "Retract Maj",
+        "callback": function() {
+          gquery("retract_maj", {});
+        }
+      }
     };
-    var buttonWidth = 120;
     for(var i = 0; i < btnIds.length; i++) {
-      var x = wid/2 + buttonWidth * (i-btnIds.length/2);
+      var x = centerX() + buttonWidth * (i-btnIds.length/2);
       var y =  hei*0.25 + 50;
       var id = btnIds[i];
       var data = btns[id];
@@ -464,19 +692,19 @@ function Game(game_id, player_id) {
   }
 
   function mainText(text) {
-    drawText(text, "main", wid/2, hei*0.25);
+    drawText(text, "main", centerX(), hei*0.25);
   }
 
   function scaleTile(width) {
     return width/179*240;
   }
 
-  function drawText(text, type, x, y) {
+  function drawText(text, type, x, y, center) {
     if(type == "main") {
       ctx.font = "30px Arial";
       ctx.textAlign = "center";
     } else if(type == "heading") {
-      ctx.font = "17px Arial";
+      ctx.font = "bold 17px Arial";
       ctx.textAlign = "left";
     } else if(type == "name") {
       ctx.font = "15px Arial";
@@ -490,12 +718,10 @@ function Game(game_id, player_id) {
     } else if(type == "button") {
       ctx.font = "20px Arial";
       ctx.textalign = "left";
+      x -= ctx.measureText(text).width*0.5;
     } else if(type == "player_name") {
       ctx.font = "17px arial";
       ctx.textAlign = "center";
-    } else if(type == "log_title") {
-      ctx.font = "bold 15px Arial";
-      ctx.textAlign = "left";
     } else {
       ctx.font = "8px Arial";
     }
@@ -513,28 +739,36 @@ function Game(game_id, player_id) {
     return res;
   }
 
-  function insertTile(drag_tile, pos) {
-    var h = that.state.hand;
-    var new_order = [];
-    for(var i = 0; i <= h.length; i++) {
+  function insertList(lst, tile, pos) {
+    var res = [];
+    for(var i = 0; i <= lst.length; i++) {
       if(i == pos) {
-        new_order.push(drag_tile);
+        res.push(tile);
       }
-      if(i < h.length && h[i] != drag_tile) {
-        new_order.push(h[i]);
+      if(i < lst.length && lst[i] != tile) {
+        res.push(lst[i]);
       }
     }
-    that.state.offered = removeTile(that.state.offered, drag_tile);
-    that.state.hand = new_order;
-    gquery("rearrange_tiles", {"tiles": sendTiles(new_order)});
+    return res;
   }
 
-  function offerTile(drag_tile, pos) {
+  function insertTile(drag_tile, pos) {
+    that.state.hand = insertList(that.state.hand, drag_tile, pos);
+    that.state.offered = removeTile(that.state.offered, drag_tile);
+    gquery("rearrange_tiles", {"tiles": sendTiles(that.state.hand)});
+  }
+
+  function offerTile(drag_tile, pos, insert) {
     var off = that.state.offered;
-    if(pos < off.length) {
-      off[pos] = drag_tile;
+    if(insert) {
+      off = insertList(off, drag_tile, pos);
+      that.state.offered = off;
     } else {
-      off.push(drag_tile);
+      if(pos < off.length) {
+        off[pos] = drag_tile;
+      } else {
+        off.push(drag_tile);
+      }
     }
     that.state.hand = removeTile(that.state.hand, drag_tile);
 
@@ -570,7 +804,7 @@ function Game(game_id, player_id) {
 
   this.mousedown = function(x,y) {
     for(var i = 0; i < tiles.length; i++) {
-      if(tiles[i].contains(x,y)) {
+      if(tiles[i].contains(x,y) && tiles[i].draggable) {
         drag_tile = tiles[i].str;
         mx_base = x;
         my_base = y;

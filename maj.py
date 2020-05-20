@@ -20,10 +20,13 @@ class Player:
     self.offered = []
     self.num_offered = None
     self.board = []
-    self.maj = False
+    self.disqualified = False
 
   def take_tile(self, tile):
     self.hand.append(tile)
+
+  def take_tile_offered(self, tile):
+    self.offered.append(tile)
 
   def take_tiles(self, tiles):
     self.hand += tiles
@@ -83,11 +86,13 @@ class Player:
     return discarded
 
   def show_tiles(self, tiles):
+    if self.offered:
+      self.hand, self.offered = self.merge_left(self.hand, self.offered)
     self.hand, group = self.pick_tiles(self.hand, tiles)
     self.board.append(group)
 
-  def claim_maj(self):
-    self.maj = True
+  def has_maj(self):
+    return len(self.hand) == 0 and sum((len(g) for g in self.board)) == 14
 
   def json_hand(self):
     return jsonTiles(self.hand)
@@ -130,7 +135,10 @@ class GamePhase(Enum):
   DISCARD = 5
   START_TURN = 6
   PENDING_CALL = 7
-  WINNER = 8
+  PENDING_SHOW = 8
+  SHOWING_MAJ = 9
+  WINNER = 10
+  WALL = 11
 
 def create_deck():
   deck = []
@@ -175,9 +183,9 @@ class Game:
     self.call_idx = None
     self.maj = False
     self.log_entries = []
-    self.draw_wait_duration = 1
-    self.call_wait_duration = 2
-    self.start_ts = None
+    self.draw_wait_duration = 5
+    self.call_wait_duration = 5
+    self.start_ts = datetime.datetime.now()
     self.waived = set()
     random.shuffle(self.deck)
 
@@ -205,7 +213,7 @@ class Game:
       "num_offered": self.players[pid].num_offered,
       "offered": self.players[pid].json_offered(),
       "discard_pile": jsonTiles(self.discard_pile),
-      "top_discard": str(self.top_discard),
+      "top_discard": self.top_discard and str(self.top_discard),
       "next_player": self.next_player,
       "your_turn": self.is_player_turn(pid),
       "player_idx": self.find_player_idx(pid),
@@ -221,27 +229,34 @@ class Game:
       "can_call_maj": [
         self.can_call(i, True) for i in range(len(self.player_seq))
       ],
-      "timeout_elapsed": self.timeout_elapsed()
+      "timeout_elapsed": self.timeout_elapsed(),
+      "timeout_deadline": self.ts_to_epoch(self.timeout_deadline()),
+      "disqualified": [
+        self.players[i].disqualified for i in self.player_seq
+      ],
     }
+
+  def ts_to_epoch(self, ts):
+    return ts.timestamp()
 
   def show_log(self):
     return [
-      ((ts - datetime.datetime(1970, 1, 1)).total_seconds(), msg) for
+      (self.ts_to_epoch(ts), msg) for
       ts, msg in self.log_entries[-10:]
     ]
 
   def log(self, msg):
     self.log_entries.append((datetime.datetime.now(), msg))
 
-  def validate_name(self, player_name):
-    names = (p.name for p in self.players.values())
+  def validate_name(self, player_id, player_name):
+    names = (p.name for pid, p in self.players.items() if pid != player_id)
     while player_name is None or player_name in names:
       player_name = rand_player_name()
 
     return player_name
 
   def add_player(self, player_id, player_name):
-    player_name = self.validate_name(player_name)
+    player_name = self.validate_name(player_id, player_name)
 
     if player_id in self.players:
       old_name = self.players[player_id].name
@@ -278,7 +293,9 @@ class Game:
 
   def offer_tiles(self, player_id, tiles):
     if (self.phase != GamePhase.TRADING_MANDATORY and
-        self.phase != GamePhase.TRADING_OPTIONAL_EXECUTE):
+        self.phase != GamePhase.TRADING_OPTIONAL_EXECUTE and
+        self.phase != GamePhase.PENDING_SHOW and
+        self.phase != GamePhase.SHOWING_MAJ):
         return "Wrong game phase to offer tiles"
 
     self.players[player_id].offer_tiles(tiles)
@@ -355,7 +372,8 @@ class Game:
 
   def is_prev_turn(self, pid):
     player_idx = self.find_player_idx(pid)
-    return player_idx == ((self.next_player-1) % len(self.player_seq))
+    nxt = self.get_prev_player(self.next_player)
+    return player_idx == nxt
 
   def discard_tile(self, player_id, tile):
     if self.phase != GamePhase.DISCARD:
@@ -372,12 +390,38 @@ class Game:
 
     self.top_discard = discarded
     self.phase = GamePhase.START_TURN
-    self.next_player = (self.next_player+1) % len(self.player_seq)
+    nxt = self.get_next_player(self.next_player)
+    if nxt is None:
+      self.wall_game()
+    else:
+      self.next_player = nxt
     self.waived = set()
     self.call_idx = None
     self.maj = False
     self.start_ts = datetime.datetime.now()
     return None
+
+  def get_prev_player(self, nxt):
+    for i in range(len(self.player_seq)):
+      nxt = (nxt-1) % len(self.player_seq)
+      player = self.players[self.player_seq[nxt]]
+      if not player.disqualified:
+        return nxt
+
+    return None
+
+  def get_next_player(self, nxt):
+    for i in range(len(self.player_seq)):
+      nxt = (nxt+1) % len(self.player_seq)
+      player = self.players[self.player_seq[nxt]]
+      if not player.disqualified:
+        return nxt
+
+    return None
+
+  def wall_game(self):
+    self.phase = GamePhase.WALL
+    self.log("All players disqualified. It's a wall game!")
 
   def rearrange_tiles(self, player_id, tiles):
     player = self.players[player_id]
@@ -403,9 +447,10 @@ class Game:
 
     tile = self.deck.pop()
     player.take_tile(tile)
-    self.log("{} drew a tile.".format(player.name))
+    self.log("{} drew a tile ({} remaining).".format(player.name, len(self.deck)))
 
-    self.discard_pile.append(self.top_discard)
+    if self.top_discard:
+      self.discard_pile.append(self.top_discard)
     self.top_discard = None
     self.phase = GamePhase.DISCARD
     return None
@@ -432,8 +477,14 @@ class Game:
     if self.is_prev_turn(player_id):
       return "Cannot call your own discard"
 
+    player = self.players[player_id]
+
+    if player.disqualified:
+      return "Disqualified"
+
     self.phase = GamePhase.PENDING_CALL
-    self.start_ts = datetime.datetime.now()
+    # Optional: Reset timer:
+    # self.start_ts = datetime.datetime.now()
 
     player_idx = self.find_player_idx(player_id)
     if self.call_idx is None or self.has_call_priority(player_idx, is_maj, self.call_idx, self.maj):
@@ -441,7 +492,7 @@ class Game:
         # Can't call again if you already lost priority
         self.waived.add(self.player_seq[self.call_idx])
       self.call_idx = player_idx
-      player = self.players[player_id]
+      self.maj = is_maj
       if is_maj:
         self.log("{} called the tile with maj.".format(player.name))
       else:
@@ -453,6 +504,8 @@ class Game:
 
   def can_call(self, idx, is_maj):
     pid = self.player_seq[idx]
+    if self.players[pid].disqualified:
+      return False
     if self.is_prev_turn(pid):
       return False
     if pid in self.waived:
@@ -475,42 +528,108 @@ class Game:
 
     return True
 
+  def timeout_deadline(self):
+    if self.phase == GamePhase.START_TURN:
+      return self.start_ts + datetime.timedelta(seconds=self.draw_wait_duration)
+    elif self.phase == GamePhase.PENDING_CALL:
+      return self.start_ts + datetime.timedelta(seconds=self.call_wait_duration)
+    else:
+      return datetime.datetime(1970, 1, 1)
+
   def timeout_elapsed(self):
     now = datetime.datetime.now()
-    if self.phase == GamePhase.START_TURN:
-      return (now - self.start_ts).total_seconds() >= self.draw_wait_duration
-    elif self.phase == GamePhase.PENDING_CALL:
-      return (now - self.start_ts).total_seconds() >= self.call_wait_duration
-    else:
-      return None # n/a
+    deadline = self.timeout_deadline()
+    return now >= deadline
 
   def waive_call(self, player_id):
     self.waived.add(player_id)
     return None
 
-  def end_call_phase(self, player_id, tiles):
+  def end_call_phase(self, player_id):
     if self.phase != GamePhase.PENDING_CALL:
-      return "Wrong game phase to show tiles"
-
-    player_idx = self.find_player_idx(player_id)
-    if self.call_idx != player_idx:
-      return "A different player has priority on this call, or you did not call yet"
+      return "Cannot end call phase yet"
 
     if not self.all_waived() and not self.timeout_elapsed():
       return "Let other players have a chance to call first"
 
-    player = self.players[player_id]
+    player_idx = self.find_player_idx(player_id)
+    if self.call_idx != player_idx:
+      return "Not your turn to call"
 
+    player = self.players[player_id]
+    if player.disqualified:
+      return "Disqualified"
+
+    self.next_player = player_idx
+
+    player.take_tile_offered(self.top_discard)
     self.log("The {} went to {}.".format(self.top_discard.nice_name(), player.name))
-    player.take_tile(self.top_discard)
-    player.show_tiles(tiles + [self.top_discard])
     self.top_discard = None
 
     if self.maj:
-      self.phase = GamePhase.WINNER
-      player.claim_maj()
+      self.phase = GamePhase.SHOWING_MAJ
       self.log("{} claims maj.".format(player.name))
     else:
+      self.phase = GamePhase.PENDING_SHOW
+
+  def show_tiles(self, player_id, tiles):
+    if (self.phase != GamePhase.PENDING_SHOW and
+        self.phase != GamePhase.SHOWING_MAJ):
+      return "Wrong game phase to show tiles"
+
+    player_idx = self.find_player_idx(player_id)
+    if self.next_player != player_idx:
+      return "Not your turn to call"
+
+    if len(tiles) < 3 and self.phase == GamePhase.PENDING_SHOW:
+      return "Must reveal at least three tiles."
+
+    player = self.players[player_id]
+
+    if player.disqualified:
+      return "Disqualified"
+
+    player.show_tiles(tiles)
+    self.log("{} showed tiles.".format(player.name))
+
+    if player.has_maj():
+      self.phase = GamePhase.WINNER
+    elif self.phase == GamePhase.PENDING_SHOW:
       self.phase = GamePhase.DISCARD
-      self.next_player = player_idx
+    elif self.phase == GamePhase.SHOWING_MAJ:
+      self.phase = GamePhase.SHOWING_MAJ
+
+  def claim_maj(self, player_id):
+    if self.phase != GamePhase.DISCARD:
+      return "Wrong game phase to claim maj"
+
+    if not self.is_player_turn(player_id):
+      return "Not your turn"
+
+    player = self.players[player_id]
+    if player.disqualified:
+      return "Disqualified"
+
+    self.phase = GamePhase.SHOWING_MAJ
+    self.log("{} claims maj.".format(player.name))
+
+  def retract_maj(self, player_id):
+    if self.phase != GamePhase.WINNER:
+      return "Wrong game phase to retract maj"
+
+    if not self.is_player_turn(player_id):
+      return "Not your turn"
+
+    player = self.players[player_id]
+    if player.disqualified:
+      return "Disqualified"
+
+    player.disqualified = True
+    self.phase = GamePhase.START_TURN
+    self.log("{} retracted maj.".format(player.name))
+    nxt = self.get_next_player(self.next_player)
+    if nxt is None:
+      self.wall_game()
+    else:
+      self.next_player = nxt
 
