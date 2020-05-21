@@ -55,6 +55,39 @@ function getImage(url) {
   }
 }
 
+var tile_data = {
+  "O": {
+    "desc": "Dot",
+    "type": "numerical"
+  },
+  "B": {
+    "desc": "Bamboo",
+    "type": "numerical"
+  },
+  "C": {
+    "desc": "Crack",
+    "type": "numerical"
+  },
+  "W": {
+    "desc": "Wind",
+    "type": "named",
+    "named": ["North","East","South","West"]
+  },
+  "D": {
+    "desc": "Dragon",
+    "type": "named",
+    "named": ["Red", "Green", "Soap"]
+  },
+  "F": {
+    "desc": "Flower",
+    "type": "equivalent"
+  },
+  "J": {
+    "desc": "Joker",
+    "type": "equivalent"
+  }
+};
+
 function Game(game_id, player_id) {
   function Tile(tile_str, x, y, width){
     var that = this;
@@ -64,6 +97,7 @@ function Game(game_id, player_id) {
     this.tid = t[1];
     this.str = tile_str;
     this.draggable = true;
+    this.zoomable = false;
 
     this.getX = function() {
       return x;
@@ -71,6 +105,10 @@ function Game(game_id, player_id) {
 
     this.getY = function() {
       return y;
+    }
+
+    this.getWidth = function() {
+      return width;
     }
 
     this.centerX = function() {
@@ -99,6 +137,21 @@ function Game(game_id, player_id) {
         newx = Math.min(Math.max(newx, 0), wid-twid);
         newy = Math.min(Math.max(newy, 0), hei-thei);
         ctx.drawImage(img, newx, newy, twid, thei);
+      }
+    }
+
+    this.name = function() {
+      var data = tile_data[tile_str.charAt(0)];
+      var type = data["type"];
+      var num = Number(tile_str.charAt(1));
+      if(type == "numerical") {
+        return num + " " + data["desc"];
+      } else if(type == "named") {
+        return data["named"][num-1]
+      } else if(type == "equivalent") {
+        return data["desc"];
+      } else {
+        return tile_str;
       }
     }
 
@@ -178,12 +231,17 @@ function Game(game_id, player_id) {
   var buttons = [];
   var pressed_btn = null;
   var pending_action = null;
+  var tileData = null;
+  var override_drag_obj = null;
+  var exit = false;
 
   var buttonWidth = 140;
   var logWidth = 450;
   var numLogs = 10;
   var logLineHeight = 15;
   var logHeight = logLineHeight*numLogs+25;
+  var mainTextHeight = 1;
+  var logDuration = null; //disabled
 
   function init() {
     that.rescale();
@@ -215,6 +273,8 @@ function Game(game_id, player_id) {
 
       tileWidth = Math.min((wid-logWidth) / 14, 197);
       tileHeight = scaleTile(tileWidth);
+
+      mainTextHeight = scaleTile(tileWidth*0.5)*5+20;
     }
   }
 
@@ -222,11 +282,13 @@ function Game(game_id, player_id) {
     if(!that.state) {
       return;
     }
-    var phase = that.state.phase;
-
+    if(exit) {
+      return;
+    }
     checkPendingAction();
 
     clear();
+    showDragTile();
     showDiscardPile();
     showSidePanel();
     showPlayers();
@@ -235,13 +297,38 @@ function Game(game_id, player_id) {
     showSuggestTrade();
     showDiscard();
     showMainButtons();
-    showHover();
-    showDragTile();
-    drawText("Your name: " + player_name(that.state.player_idx), "player_name", centerX(), 15);
+    var tile_name = showHover();
+    showMetadata(tile_name);
     showOffer();
+    showMainText();
     if(drag_tile_obj) {
-      drag_tile_obj.render();
+      if(override_drag_obj) {
+        override_drag_obj.render();
+      } else {
+        drag_tile_obj.render();
+      }
     }
+  }
+
+  function isDisqualified() {
+    return that.state.disqualified[that.state.player_idx];
+  }
+
+  function now() {
+    return (+new Date())*0.001;
+  }
+
+  function showMainText() {
+    var phase = that.state.phase;
+
+    var log = that.state.log;
+    if(log.length >= 1) {
+      var lastLog = log[log.length-1];
+      if(logDuration == null || now() - lastLog[0] < logDuration) {
+        subText(lastLog[1]);
+      }
+    }
+
     if(isDisqualified()) {
       mainText("Maj retracted.");
     } else if(phase == "WAITING_PLAYERS") {
@@ -315,14 +402,6 @@ function Game(game_id, player_id) {
     }
   }
 
-  function isDisqualified() {
-    return that.state.disqualified[that.state.player_idx];
-  }
-
-  function now() {
-    return (+new Date())*0.001;
-  }
-
   function checkPendingAction() {
     var phase = that.state.phase;
     if(phase == "START_TURN" && pending_action == "draw_tile") {
@@ -355,6 +434,7 @@ function Game(game_id, player_id) {
     tiles = [];
     drop_targets = [];
     buttons = [];
+    override_drag_obj = null;
   }
 
   function showSidePanel() {
@@ -369,6 +449,20 @@ function Game(game_id, player_id) {
     for(var i = 0; i < log.length && i < numLogs; i++) {
       drawText(log[i][1], "log", wid-logWidth+5, base+i*logLineHeight+15);
     }
+  }
+
+  function showMetadata(tile_name) {
+    var basex = wid-logWidth+5;
+    var basey = hei-logHeight-65;
+    drawText("Quick Info", "heading", basex, basey);
+    drawText("Player Name: " + player_name(that.state.player_idx), "log", basex, basey+20);
+    var txt = "Selected Tile: " + (tile_name || "None");
+    drawText(txt, "log", basex, basey+35);
+    drawText("Tiles Remaining: " + that.state.deck_size, "log", basex, basey+50);
+  }
+
+  function isJoker(tile_str) {
+    return tile_str.charAt(0) == "J";
   }
 
   function showPlayers() {
@@ -401,11 +495,34 @@ function Game(game_id, player_id) {
             y += thei+1;
           }
           for(var k = 0; k < group.length; k++) {
-            var tile = new Tile(group[k], x, y, twid);
+            var jokerSwap = false;
+            if(isJoker(group[k]) && drag_tile_obj && that.state.your_turn &&
+               (phase == "START_TURN" || phase == "DISCARD")) {
+              let stile = sendTiles([drag_tile]);
+              let sjoker = sendTiles([group[k]])
+              var drop_target = new DropTarget(x, y, twid, function(drag_tile) {
+                gquery("swap_joker", {
+                  "tile": stile,
+                  "joker": sjoker
+                });
+              });
+              if (drop_target.contains(drag_tile_obj.centerX(), drag_tile_obj.centerY())) {
+                jokerSwap = true;
+              }
+            }
+            var tile = null;
+            if(jokerSwap) {
+              override_drag_obj = new Tile(group[k],
+                drag_tile_obj.getX(), drag_tile_obj.getY(), drag_tile_obj.getWidth());
+              drop_targets.push(drop_target);
+            }
+            tile = new Tile(group[k], x, y, twid);
             tile.render();
             tile.draggable = false;
+            tile.zoomable = true;
             tiles.push(tile);
             x += twid;
+            tile.render();
           }
           x += twid*0.2;
         }
@@ -418,13 +535,20 @@ function Game(game_id, player_id) {
   }
 
   function showHover() {
+    var tile_name = null;
     if(drag_tile == null) {
       for(var i = 0; i < tiles.length; i++) {
-        if(!tiles[i].draggable) {
+        if(tiles[i].zoomable) {
           tiles[i].hoverRender(mx, my, tileWidth);
         }
+        if(tiles[i].contains(mx, my)) {
+          tile_name = tiles[i].name();
+        }
       }
+    } else if(drag_tile_obj) {
+      tile_name = drag_tile_obj.name();
     }
+    return tile_name;
   }
 
   function showSuggestTrade() {
@@ -570,9 +694,12 @@ function Game(game_id, player_id) {
       });
       drop_target.render();
       drop_targets.push(drop_target);
-    } else if(phase=="START_TURN" && that.state.top_discard) {
+    } else if((phase=="START_TURN" || phase == "PENDING_CALL") && that.state.top_discard) {
       var tile = new Tile(that.state.top_discard, x, y, tileWidth);
       tile.render();
+      tile.zoomable = false;
+      tile.draggable = false;
+      tiles.push(tile);
     }
   }
 
@@ -589,6 +716,7 @@ function Game(game_id, player_id) {
         var tile = new Tile(d[i], x, y, twid);
         tile.render();
         tile.draggable = false;
+        tile.zoomable = true;
         tiles.push(tile);
         x += twid;
         if ((i+1) % tilePerRow == 0) {
@@ -624,7 +752,9 @@ function Game(game_id, player_id) {
        that.state.offered.length >= 3) ||
        (phase == "SHOWING_MAJ" && that.state.your_turn &&
        that.state.offered.length >= 1)) {
-      btnIds.push("show");
+      if(that.state.offered.length <= 6) {
+        btnIds.push("show");
+      }
     }
     if(phase == "DISCARD" && that.state.your_turn) {
       btnIds.push("claim_maj");
@@ -681,7 +811,7 @@ function Game(game_id, player_id) {
     };
     for(var i = 0; i < btnIds.length; i++) {
       var x = centerX() + buttonWidth * (i-btnIds.length/2);
-      var y =  hei*0.25 + 50;
+      var y =  mainTextHeight + 50;
       var id = btnIds[i];
       var data = btns[id];
       var btn = new Button(id, x, y, buttonWidth-10, 40,
@@ -692,7 +822,11 @@ function Game(game_id, player_id) {
   }
 
   function mainText(text) {
-    drawText(text, "main", centerX(), hei*0.25);
+    drawText(text, "main", centerX(), mainTextHeight);
+  }
+
+  function subText(text) {
+    drawText(text, "sub", centerX(), mainTextHeight+30);
   }
 
   function scaleTile(width) {
@@ -702,6 +836,9 @@ function Game(game_id, player_id) {
   function drawText(text, type, x, y, center) {
     if(type == "main") {
       ctx.font = "30px Arial";
+      ctx.textAlign = "center";
+    } else if(type == "sub") {
+      ctx.font = "20px Arial";
       ctx.textAlign = "center";
     } else if(type == "heading") {
       ctx.font = "bold 17px Arial";
@@ -719,9 +856,6 @@ function Game(game_id, player_id) {
       ctx.font = "20px Arial";
       ctx.textalign = "left";
       x -= ctx.measureText(text).width*0.5;
-    } else if(type == "player_name") {
-      ctx.font = "17px arial";
-      ctx.textAlign = "center";
     } else {
       ctx.font = "8px Arial";
     }

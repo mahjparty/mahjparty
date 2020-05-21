@@ -1,6 +1,10 @@
 from enum import Enum
 import datetime
 import random
+import json
+
+with open("www/tile_data.json") as f:
+  tile_data = json.load(f)
 
 def rand_player_name():
   part1 = ["Happy", "Proud", "Excited", "Curious", "Quick", "Honest",
@@ -91,6 +95,36 @@ class Player:
     self.hand, group = self.pick_tiles(self.hand, tiles)
     self.board.append(group)
 
+  def find_tile(self, tile):
+    for t in self.hand:
+      if t.idx == tile:
+        return t
+
+    return None
+
+  def swap_tile(self, lose_tile, gain_tile):
+    new_hand = []
+    found = False
+    for t in self.hand:
+      if t.idx == lose_tile.idx:
+        new_hand.append(gain_tile)
+        found = True
+      else:
+        new_hand.append(t)
+    self.hand = new_hand
+    return found
+
+  def swap_joker(self, other, swap_tile, joker):
+    for group in self.board:
+      for i in range(len(group)):
+        if (group[i].idx == joker and
+            group[i].typ == TileTypes.JOKER):
+          if other.swap_tile(swap_tile, group[i]):
+            group[i] = swap_tile
+            return True
+
+    return False
+
   def has_maj(self):
     return len(self.hand) == 0 and sum((len(g) for g in self.board)) == 14
 
@@ -125,7 +159,16 @@ class Tile:
     return str(self)
 
   def nice_name(self):
-    return str(self) #TODO
+    data = tile_data[self.typ.value]
+    typ = data["type"]
+    if typ == "numerical":
+      return str(self.num) + " " + data["desc"]
+    elif typ == "named":
+      return data["named"][self.num-1]
+    elif typ == "equivalent":
+      return data["desc"]
+    else:
+      return str(self)
 
 class GamePhase(Enum):
   WAITING_PLAYERS = 1
@@ -201,6 +244,7 @@ class Game:
   def get_state(self, pid):
     return {
       "deck": ','.join((str(x) for x in self.deck)),
+      "deck_size": len(self.deck),
       "hand": self.players[pid].json_hand(),
       "phase": self.phase.name,
       "trades": self.trades,
@@ -504,6 +548,10 @@ class Game:
 
   def can_call(self, idx, is_maj):
     pid = self.player_seq[idx]
+    if self.top_discard is None:
+      return False
+    if self.top_discard.typ == TileTypes.JOKER:
+      return False
     if self.players[pid].disqualified:
       return False
     if self.is_prev_turn(pid):
@@ -632,4 +680,27 @@ class Game:
       self.wall_game()
     else:
       self.next_player = nxt
+
+  def swap_joker(self, player_id, tile, joker):
+    if self.phase not in [GamePhase.DISCARD, GamePhase.START_TURN]:
+      return "Wrong game phase to swap joker"
+
+    if not self.is_player_turn(player_id):
+      return "Not your turn"
+
+    player = self.players[player_id]
+    if player.disqualified:
+      return "Disqualified"
+
+    swap_tile = player.find_tile(tile)
+    if swap_tile is None:
+      return "You don't have that tile"
+
+    for p in self.players.values():
+      if p.swap_joker(player, swap_tile, joker):
+        self.log("{} traded a {} for a joker.".format(
+          player.name, swap_tile.nice_name()))
+        return None
+
+    return "Joker swap failed"
 

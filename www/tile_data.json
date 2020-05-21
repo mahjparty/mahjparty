@@ -1,0 +1,32 @@
+{
+  "O": {
+    "desc": "Dot",
+    "type": "numerical"
+  },
+  "B": {
+    "desc": "Bamboo",
+    "type": "numerical"
+  },
+  "C": {
+    "desc": "Crack",
+    "type": "numerical"
+  },
+  "W": {
+    "desc": "Wind",
+    "type": "named",
+    "named": ["North","East","South","West"]
+  },
+  "D": {
+    "desc": "Dragon",
+    "type": "named",
+    "named": ["Red", "Green", "Soap"]
+  },
+  "F": {
+    "desc": "Flower",
+    "type": "equivalent"
+  },
+  "J": {
+    "desc": "Joker",
+    "type": "equivalent"
+  }
+}

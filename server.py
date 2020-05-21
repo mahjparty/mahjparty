@@ -267,3 +267,23 @@ def retract_maj():
     return send(game.get_state(player_id))
   else:
     return err(res)
+
+@app.route('/swap_joker')
+def swap_joker():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
+  tile = parse_tiles(request.args.get('tile'))
+  if tile is None or len(tile) != 1:
+    return err("Invalid tiles")
+
+  joker = parse_tiles(request.args.get('joker'))
+  if joker is None or len(joker) != 1:
+    return err("Invalid jokers")
+
+  res = game.swap_joker(player_id, tile[0], joker[0])
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
