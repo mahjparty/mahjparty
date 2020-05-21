@@ -187,25 +187,25 @@ def create_deck():
   deck = []
   idx = 0
   for j in range(4):
-    for i in range(1,9):
+    for i in range(1,10):
       deck.append(Tile(TileTypes.DOT, i, idx))
       deck.append(Tile(TileTypes.BAMBOO, i, idx+1))
       deck.append(Tile(TileTypes.CRACK, i, idx+2))
       idx += 3
 
-    for i in range(1,4):
+    for i in range(1,5):
       deck.append(Tile(TileTypes.WIND, i, idx))
       idx += 1
 
-    for i in range(1,3):
+    for i in range(1,4):
       deck.append(Tile(TileTypes.DRAGON, i, idx))
       idx += 1
 
-  for i in range(1,8):
+  for i in range(1,9):
     deck.append(Tile(TileTypes.FLOWER, i, idx))
     idx += 1
 
-  for j in range(1,8):
+  for j in range(1,9):
     deck.append(Tile(TileTypes.JOKER, 1, idx))
     idx += 1
 

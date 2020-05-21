@@ -24,7 +24,7 @@ function query(endpoint, params, callback) {
     joined += encodeURIComponent(key) + "=" + encodeURI(params[key]);
     joined += "&";
 	}
-	var url = "http://localhost:5000/"+endpoint+"?"+joined;
+	var url = "http://192.168.1.100:5000/"+endpoint+"?"+joined;
   xhr.open('GET', url, true);
   xhr.send('');
 }
@@ -92,7 +92,7 @@ function Game(game_id, player_id) {
   function Tile(tile_str, x, y, width){
     var that = this;
     var t = tile_str.split(":");
-    var img = getImage("tiles/" + t[0] + ".png");
+    var img = getImage("/tiles/" + t[0] + ".png");
     var height = scaleTile(width);
     this.tid = t[1];
     this.str = tile_str;
@@ -191,11 +191,10 @@ function Game(game_id, player_id) {
       if(that.contains(xx, yy) && pressed_btn === id) {
         that.callback();
       }
-      start_press = false;
     }
     this.callback = callback;
     this.render = function() {
-      if(selected) {
+      if(selected || (pressed_btn == id)) {
         ctx.fillStyle = '#F00';
       } else if (that.contains(mx, my)) {
         ctx.fillStyle = '#BBB';
@@ -233,6 +232,7 @@ function Game(game_id, player_id) {
   var pending_action = null;
   var tileData = null;
   var override_drag_obj = null;
+  var pname = localStorage.getItem("player_name") || "";
   var exit = false;
 
   var buttonWidth = 140;
@@ -242,6 +242,9 @@ function Game(game_id, player_id) {
   var logHeight = logLineHeight*numLogs+25;
   var mainTextHeight = 1;
   var logDuration = null; //disabled
+  var firstLoad = true;
+
+  var startupHash = null;
 
   function init() {
     that.rescale();
@@ -256,6 +259,14 @@ function Game(game_id, player_id) {
 
     window.addEventListener('mouseup', function(e) {
       that.mouseup(e.offsetX, e.offsetY);
+    });
+
+    var joinUrl = document.getElementById("joinUrl");
+    joinUrl.addEventListener('mousedown', function(e) {
+      // https://www.w3schools.com/howto/howto_js_copy_clipboard.asp
+      joinUrl.select();
+      joinUrl.setSelectionRange(0, 99999);
+      document.execCommand("copy");
     });
   }
 
@@ -275,10 +286,14 @@ function Game(game_id, player_id) {
       tileHeight = scaleTile(tileWidth);
 
       mainTextHeight = scaleTile(tileWidth*0.5)*5+20;
+
     }
   }
 
   this.render = function() {
+    clear();
+    showStartup();
+
     if(!that.state) {
       return;
     }
@@ -287,7 +302,6 @@ function Game(game_id, player_id) {
     }
     checkPendingAction();
 
-    clear();
     showDragTile();
     showDiscardPile();
     showSidePanel();
@@ -318,6 +332,74 @@ function Game(game_id, player_id) {
     return (+new Date())*0.001;
   }
 
+  function showStartup() {
+    var phase = null;
+    if(that.state !== null) {
+      phase = that.state.phase;
+    } else if(firstLoad) {
+      phase = "LOADING";
+    } else {
+      phase = "STARTUP";
+    }
+    var joinUrl = document.getElementById("joinUrl");
+    var newHash = phase + "," + centerX() + "," + mainTextHeight;
+    if(phase == "LOADING") {
+      drawText("Loading Maj...", "supermain", wid/2, mainTextHeight);
+    } else if(phase == "STARTUP") {
+      drawText("Ready to play Maj?",
+        "supermain", wid/2, mainTextHeight-50);
+      drawText("Choose a nickname!",
+        "main", wid/2, mainTextHeight);
+      var btnWid = 200;
+      var btn = new Button("join", wid*0.5-btnWid*0.5, mainTextHeight+200, btnWid, 60,
+        "Join Game", false, function() {
+        gquery("add_player", {"player_name": pname});
+      });
+      btn.render();
+      buttons.push(btn);
+    }
+    else if(phase == "WAITING_PLAYERS") {
+      drawText("Copy this link and send it to your friends to let them join!",
+        "sub", centerX(), mainTextHeight+200);
+      var img = getImage("/img/up-arrow.png");
+      if(img.is_ready) {
+        var w = 50;
+        var h = w/img.width*img.height;
+        ctx.drawImage(img, centerX()-w*0.5, mainTextHeight+115, w, h);
+      }
+    }
+    if(newHash != startupHash) {
+      if(phase == "STARTUP") {
+        var joinWidth = 600;
+        joinUrl.style.display="block";
+        joinUrl.value = pname;
+        joinUrl.style.left = (wid*0.5 - joinWidth*0.5) + "px";
+        joinUrl.style.top = (mainTextHeight+50) + "px";
+        joinUrl.style.width = joinWidth + "px";
+        joinUrl.style.fontSize = "2rem";
+        joinUrl.maxLength = 20;
+        joinUrl.onchange = function() {
+          if(phase == "STARTUP") {
+            pname = joinUrl.value;
+            localStorage.setItem("player_name", pname);
+          }
+        }
+      } else if(phase == "WAITING_PLAYERS") {
+        var joinWidth = 600;
+        joinUrl.style.display="block";
+        joinUrl.maxLength = null;
+        joinUrl.value = document.location.href;
+        joinUrl.style.left = (centerX() - joinWidth*0.5) + "px";
+        joinUrl.style.top = (mainTextHeight+70) + "px";
+        joinUrl.style.width = joinWidth + "px";
+        joinUrl.style.fontSize = "1.5rem";
+      } else {
+        joinUrl.style.display="none";
+      }
+      startupHash = newHash;
+    }
+  }
+
   function showMainText() {
     var phase = that.state.phase;
 
@@ -332,7 +414,12 @@ function Game(game_id, player_id) {
     if(isDisqualified()) {
       mainText("Maj retracted.");
     } else if(phase == "WAITING_PLAYERS") {
-      mainText("Waiting for players.");
+      var np = that.state.player_names.length;
+      if(np == 3) {
+        mainText("Waiting for 1 more player.");
+      } else {
+        mainText("Waiting for " + (4-np) + " more players.");
+      }
     } else if(phase == "TRADING_MANDATORY") {
       var dirs = [1, 2, -1, -1, 2, 1]
       var dirStrs = ["right", "across", "left", "left", "across", "right"];
@@ -554,8 +641,8 @@ function Game(game_id, player_id) {
   function showSuggestTrade() {
     if(that.state.phase == "TRADING_OPTIONAL_SUGGEST") {
       for(let i = 0; i <= 3; i++) {
-        var x = wid/2 + buttonWidth * (i-2);
-        var y =  hei*0.25 + 50;
+        var x = centerX() + buttonWidth * (i-2);
+        var y =  mainTextHeight + 50;
         var sel = (i == that.state.num_offered);
         var id = "suggestTrade" + i;
         var btn = new Button(id, x, y, buttonWidth-10, 40, ""+i, sel, function() {
@@ -762,6 +849,10 @@ function Game(game_id, player_id) {
     if(phase == "WINNER" && that.state.your_turn) {
       btnIds.push("retract_maj");
     }
+    if(phase == "WINNER" || phase == "WALL") {
+      btnIds.push("new_players");
+      btnIds.push("same_players");
+    }
     var btns = {
       "draw": {
         "text": "Draw",
@@ -807,6 +898,18 @@ function Game(game_id, player_id) {
         "callback": function() {
           gquery("retract_maj", {});
         }
+      },
+      "new_players": {
+        "text": "New Players",
+        "callback": function() {
+          document.location.href="/";
+        }
+      },
+      "same_players": {
+        "text": "Same Players",
+        "callback": function() {
+          //TODO
+        }
       }
     };
     for(var i = 0; i < btnIds.length; i++) {
@@ -834,7 +937,10 @@ function Game(game_id, player_id) {
   }
 
   function drawText(text, type, x, y, center) {
-    if(type == "main") {
+    if(type == "supermain") {
+      ctx.font = "40px Arial";
+      ctx.textAlign = "center";
+    } else if(type == "main") {
       ctx.font = "30px Arial";
       ctx.textAlign = "center";
     } else if(type == "sub") {
@@ -854,7 +960,7 @@ function Game(game_id, player_id) {
       ctx.textAlign = "left";
     } else if(type == "button") {
       ctx.font = "20px Arial";
-      ctx.textalign = "left";
+      ctx.textAlign = "left";
       x -= ctx.measureText(text).width*0.5;
     } else {
       ctx.font = "8px Arial";
@@ -928,6 +1034,7 @@ function Game(game_id, player_id) {
   }
 
   this.recvState = function(data) {
+    firstLoad = false;
     if(data.error) {
       console.log(data.error);
       that.error = data.error;
@@ -1006,19 +1113,12 @@ function init() {
     localStorage.setItem("player_id", player_id);
   }
 
-  var player_name = localStorage.getItem("player_name");
-  if (!player_name) {
-    player_name = prompt("Enter nickname:");
-    localStorage.setItem("player_name", player_name);
-  }
-
   var game = new Game(game_id, player_id);
-  query("add_player", {"game_id": game_id, "player_id": player_id, "player_name": player_name}, game.recvState);
 
   // debug
   window.game = game;
 
 	setInterval(function(){game.render()}, 30);
 	setInterval(function(){game.loadState()}, 1000);
-	setInterval(function(){game.rescale()}, 3000);
+	setInterval(function(){game.rescale()}, 500);
 }
