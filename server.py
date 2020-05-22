@@ -20,7 +20,7 @@ def rand_id():
 
 @app.route('/')
 def hello_world():
-  return 'Hello, World!'
+  return 'Welcome to the Maj API!'
 
 def send(jsn):
   return json.dumps(jsn)
@@ -128,6 +128,18 @@ def offer_tiles():
   else:
     return err(res)
 
+@app.route('/commit_offered')
+def commit_offered():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
+  res = game.commit_offered(player_id)
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
+
 @app.route('/rearrange_tiles')
 def rearrange_tiles():
   game, player_id = get_game_player()
@@ -228,6 +240,22 @@ def end_call_phase():
   else:
     return err(res)
 
+@app.route('/place_hold')
+def place_hold():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
+  maj = parse_bool(request.args.get('maj'))
+  if maj is None:
+    return err("Invalid maj state")
+
+  res = game.place_hold(player_id, maj)
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
+
 @app.route('/show_tiles')
 def show_tiles():
   game, player_id = get_game_player()
@@ -263,6 +291,18 @@ def retract_maj():
     return err(player_id)
 
   res = game.retract_maj(player_id)
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
+
+@app.route('/restart_game')
+def restart_game():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
+  res = game.restart_game(player_id)
   if res is None:
     return send(game.get_state(player_id))
   else:

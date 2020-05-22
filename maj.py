@@ -20,9 +20,13 @@ def jsonTiles(tiles):
 class Player:
   def __init__(self, name):
     self.name = name
+    self.restart_game()
+
+  def restart_game(self):
     self.hand = []
     self.offered = []
     self.num_offered = None
+    self.commit_offered = False
     self.board = []
     self.disqualified = False
 
@@ -89,14 +93,31 @@ class Player:
     self.hand, discarded = self.pick_tile(self.hand, tile)
     return discarded
 
-  def show_tiles(self, tiles):
+  def show_tiles(self, tiles, call_tile):
+    ftiles = self.find_tiles(tiles)
+    if len(ftiles) != len(tiles):
+      return False
+
+    if (call_tile is not None and
+        not all((t.matches(call_tile) for t in ftiles))):
+      return False
+
     if self.offered:
       self.hand, self.offered = self.merge_left(self.hand, self.offered)
     self.hand, group = self.pick_tiles(self.hand, tiles)
     self.board.append(group)
+    return True
+
+  def find_tiles(self, tiles):
+    res = []
+    for t in tiles:
+      ft = self.find_tile(t)
+      if ft is not None:
+        res.append(ft)
+    return res
 
   def find_tile(self, tile):
-    for t in self.hand:
+    for t in (self.hand + self.offered):
       if t.idx == tile:
         return t
 
@@ -116,6 +137,8 @@ class Player:
 
   def swap_joker(self, other, swap_tile, joker):
     for group in self.board:
+      if not all((t.matches(swap_tile) for t in group)):
+        continue
       for i in range(len(group)):
         if (group[i].idx == joker and
             group[i].typ == TileTypes.JOKER):
@@ -124,6 +147,10 @@ class Player:
             return True
 
     return False
+
+  def can_call(self, tile):
+    matches = sum((t.matches(tile) for t in self.hand))
+    return matches >= 2
 
   def has_maj(self):
     return len(self.hand) == 0 and sum((len(g) for g in self.board)) == 14
@@ -170,6 +197,24 @@ class Tile:
     else:
       return str(self)
 
+  def matches(self, other):
+    # can't call a joker
+    if other.typ == TileTypes.JOKER:
+      return False
+
+    # but you can always use a Joker to call
+    if self.typ == TileTypes.JOKER:
+      return True
+
+    data = tile_data[other.typ.value]
+    typ = data["type"]
+    if typ == "numerical" or typ == "named":
+      return self.typ == other.typ and self.num == other.num
+    elif typ == "equivalent":
+      return self.typ == other.typ
+    else:
+      return True # should be unreachable
+
 class GamePhase(Enum):
   WAITING_PLAYERS = 1
   TRADING_MANDATORY = 2
@@ -182,6 +227,13 @@ class GamePhase(Enum):
   SHOWING_MAJ = 9
   WINNER = 10
   WALL = 11
+
+class WaiveState(Enum):
+  WAIVED = 1
+  HOLD = 2
+  HOLD_MAJ = 3
+  CALLED = 4
+  NONE = 5
 
 def create_deck():
   deck = []
@@ -218,6 +270,10 @@ class Game:
     self.player_seq = []
     self.max_players = 4
     self.phase = GamePhase.WAITING_PLAYERS
+    self.log_entries = []
+    self.restart_game(None)
+
+  def restart_game(self, player_id):
     self.trades = 0
     self.deck = create_deck()
     self.next_player = 0
@@ -225,12 +281,19 @@ class Game:
     self.top_discard = None
     self.call_idx = None
     self.maj = False
-    self.log_entries = []
     self.draw_wait_duration = 5
     self.call_wait_duration = 5
     self.start_ts = datetime.datetime.now()
-    self.waived = set()
+    self.called_tile = None
+    self.waive_state = dict()
     random.shuffle(self.deck)
+
+    if player_id:
+      player = self.players[player_id]
+      for p in player:
+        p.restart_game()
+      self.log("{} started a new game.".format(player.name))
+      self.start_trading_phase()
 
   def valid_player(self, player_id):
     return player_id in self.players
@@ -243,7 +306,6 @@ class Game:
 
   def get_state(self, pid):
     return {
-      "deck": ','.join((str(x) for x in self.deck)),
       "deck_size": len(self.deck),
       "hand": self.players[pid].json_hand(),
       "phase": self.phase.name,
@@ -254,10 +316,12 @@ class Game:
       "boards": [
         self.players[i].json_board() for i in self.player_seq
       ],
+      "commit_offered": self.players[pid].commit_offered,
       "num_offered": self.players[pid].num_offered,
       "offered": self.players[pid].json_offered(),
       "discard_pile": jsonTiles(self.discard_pile),
       "top_discard": self.top_discard and str(self.top_discard),
+      "called_tile": self.called_tile and str(self.called_tile),
       "next_player": self.next_player,
       "your_turn": self.is_player_turn(pid),
       "player_idx": self.find_player_idx(pid),
@@ -267,6 +331,8 @@ class Game:
       "call_wait_duration": self.call_wait_duration,
       "draw_wait_duration": self.draw_wait_duration,
       "all_waived": self.all_waived(),
+      "pending_holds": self.pending_holds(),
+      "your_waive_state": self.waive_state.get(pid, WaiveState.NONE).name,
       "can_call": [
         self.can_call(i, False) for i in range(len(self.player_seq))
       ],
@@ -294,7 +360,9 @@ class Game:
 
   def validate_name(self, player_id, player_name):
     names = (p.name for pid, p in self.players.items() if pid != player_id)
-    while player_name is None or player_name in names:
+    while (player_name is None or
+           len(player_name.strip()) == 0 or
+           player_name in names):
       player_name = rand_player_name()
 
     return player_name
@@ -310,7 +378,7 @@ class Game:
       return None
     else:
       if len(self.players) >= self.max_players:
-        return "Game is full"
+        return "Sorry, this game is already full."
 
       self.log("{} has joined the game.".format(player_name))
       self.players[player_id] = Player(player_name)
@@ -343,17 +411,38 @@ class Game:
         return "Wrong game phase to offer tiles"
 
     self.players[player_id].offer_tiles(tiles)
+    return None
 
+  def commit_offered(self, player_id):
+    if (self.phase != GamePhase.TRADING_MANDATORY and
+        self.phase != GamePhase.TRADING_OPTIONAL_EXECUTE):
+        return "Wrong game phase to trade tiles"
+
+    player = self.players[player_id]
     if self.phase == GamePhase.TRADING_MANDATORY:
-      ready = all((len(p.offered) == 3 for p in self.players.values()))
+      if not (len(player.offered) == 3):
+        #(len(player.offered) < 3 and self.trades in [2,5])):
+        return "Need to trade three tiles"
+    elif self.phase == GamePhase.TRADING_OPTIONAL_EXECUTE:
+      if len(player.offered) != player.num_offered:
+        return "Need to trade {} tiles".format(player.num_offered)
+
+    player.commit_offered = True
+    self.check_trade()
+    return None
+
+  def check_trade(self):
+    if self.phase == GamePhase.TRADING_MANDATORY:
+      ready = all((len(p.offered) == 3 and p.commit_offered
+                   for p in self.players.values()))
       if ready:
         self.do_mandatory_trade()
     elif self.phase == GamePhase.TRADING_OPTIONAL_EXECUTE:
-      ready = all((len(p.offered) == p.num_offered for p in self.players.values()))
+      ready = all((len(p.offered) == p.num_offered and
+                  (p.commit_offered or p.num_offered == 0)
+                   for p in self.players.values()))
       if ready:
         self.do_optional_trade()
-
-    return None
 
   def suggest_trade(self, player_id, num_tiles):
     if self.phase == GamePhase.TRADING_OPTIONAL_SUGGEST:
@@ -389,7 +478,10 @@ class Game:
     self.log("Players traded 3 tiles {}.".format(dirStrs[self.trades]))
     for idx in range(len(self.player_seq)):
       idx2 = (idx + dir) % len(self.player_seq)
-      self.player_idx(idx).send_offer(self.player_idx(idx2))
+      p1 = self.player_idx(idx)
+      p2 = self.player_idx(idx2)
+      p1.send_offer(p2)
+      p1.commit_offered = False
 
     self.trades += 1
     if self.trades == 6:
@@ -399,6 +491,8 @@ class Game:
     for idx in range(2):
       p1 = self.player_idx(idx)
       p2 = self.player_idx(idx+2)
+      p1.commit_offered = False
+      p2.commit_offered = False
 
       self.log("{} and {} traded {} tiles.".format(p1.name, p2.name, p1.num_offered))
 
@@ -439,7 +533,7 @@ class Game:
       self.wall_game()
     else:
       self.next_player = nxt
-    self.waived = set()
+    self.waive_state = dict()
     self.call_idx = None
     self.maj = False
     self.start_ts = datetime.datetime.now()
@@ -479,6 +573,9 @@ class Game:
     if not self.is_player_turn(player_id):
       return "Not your turn"
 
+    if self.pending_holds():
+      return "Another player is deciding whether to call"
+
     if not self.all_waived() and not self.timeout_elapsed():
       return "Let other players have a chance to call first"
 
@@ -513,6 +610,27 @@ class Game:
 
     return idx1 < idx2
 
+  def place_hold(self, player_id, is_maj):
+    if (self.phase != GamePhase.START_TURN and
+        self.phase != GamePhase.PENDING_CALL):
+      return "Wrong game phase to call a tile"
+
+    player = self.players[player_id]
+    if player.disqualified:
+      return "Disqualified"
+
+    player_idx = self.find_player_idx(player_id)
+    if not self.can_call(player_idx, True):
+      return "You don't have call priority"
+
+    if is_maj:
+      self.waive_state[player_id] = WaiveState.HOLD_MAJ
+    else:
+      self.waive_state[player_id] = WaiveState.HOLD
+
+    self.log("{} is deciding whether to call.".format(player.name))
+    return None
+
   def call_tile(self, player_id, is_maj):
     if (self.phase != GamePhase.START_TURN and
         self.phase != GamePhase.PENDING_CALL):
@@ -527,14 +645,13 @@ class Game:
       return "Disqualified"
 
     self.phase = GamePhase.PENDING_CALL
-    # Optional: Reset timer:
-    # self.start_ts = datetime.datetime.now()
 
     player_idx = self.find_player_idx(player_id)
-    if self.call_idx is None or self.has_call_priority(player_idx, is_maj, self.call_idx, self.maj):
+    if self.can_call(player_idx, is_maj):
       if self.call_idx is not None:
         # Can't call again if you already lost priority
-        self.waived.add(self.player_seq[self.call_idx])
+        self.waive_state[self.player_seq[self.call_idx]] = WaiveState.WAIVED
+      self.waive_state[player_id] = WaiveState.CALLED
       self.call_idx = player_idx
       self.maj = is_maj
       if is_maj:
@@ -542,7 +659,7 @@ class Game:
       else:
         self.log("{} called the tile.".format(player.name))
     else:
-      return "Another player with higher priority has already called"
+      return "You don't have call priority"
 
     return None
 
@@ -556,14 +673,24 @@ class Game:
       return False
     if self.is_prev_turn(pid):
       return False
-    if pid in self.waived:
+    if self.waive_state.get(pid) == WaiveState.WAIVED:
       return False
+    if not is_maj and not self.players[pid].can_call(self.top_discard):
+      return False
+
     if self.call_idx is None:
       return True
     if idx == self.call_idx:
       return False
 
     return self.has_call_priority(idx, is_maj, self.call_idx, self.maj)
+
+  def pending_holds(self):
+    for i, pid in enumerate(self.player_seq):
+      if (self.can_call(i, True) and
+        self.waive_state.get(pid) in [WaiveState.HOLD, WaiveState.HOLD_MAJ]):
+        return True
+    return False
 
   def all_waived(self):
     if (self.phase != GamePhase.START_TURN and
@@ -590,12 +717,15 @@ class Game:
     return now >= deadline
 
   def waive_call(self, player_id):
-    self.waived.add(player_id)
+    self.waive_state[player_id] = WaiveState.WAIVED
     return None
 
   def end_call_phase(self, player_id):
     if self.phase != GamePhase.PENDING_CALL:
       return "Cannot end call phase yet"
+
+    if self.pending_holds():
+      return "Another player is deciding whether to call"
 
     if not self.all_waived() and not self.timeout_elapsed():
       return "Let other players have a chance to call first"
@@ -610,6 +740,9 @@ class Game:
 
     self.next_player = player_idx
 
+    self.waive_state = dict()
+
+    self.called_tile = self.top_discard
     player.take_tile_offered(self.top_discard)
     self.log("The {} went to {}.".format(self.top_discard.nice_name(), player.name))
     self.top_discard = None
@@ -630,15 +763,26 @@ class Game:
       return "Not your turn to call"
 
     if len(tiles) < 3 and self.phase == GamePhase.PENDING_SHOW:
-      return "Must reveal at least three tiles."
+      return "Must reveal at least three tiles"
 
     player = self.players[player_id]
 
     if player.disqualified:
       return "Disqualified"
 
-    player.show_tiles(tiles)
+    if self.phase == GamePhase.PENDING_SHOW:
+      if self.called_tile is None:
+        return "Nothing to call"
+
+      res = player.show_tiles(tiles, self.called_tile)
+      if not res:
+        return "Those tiles don't match {}!".format(self.called_tile.nice_name())
+    else:
+      player.show_tiles(tiles, None)
+
     self.log("{} showed tiles.".format(player.name))
+
+    self.called_tile = None
 
     if player.has_maj():
       self.phase = GamePhase.WINNER
@@ -698,9 +842,9 @@ class Game:
 
     for p in self.players.values():
       if p.swap_joker(player, swap_tile, joker):
-        self.log("{} traded a {} for a joker.".format(
+        self.log("{} traded {} for a Joker.".format(
           player.name, swap_tile.nice_name()))
         return None
 
-    return "Joker swap failed"
+    return "Not a valid Joker swap"
 

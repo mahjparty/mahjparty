@@ -1,3 +1,5 @@
+var alertCount = 1;
+
 //https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/response
 function query(endpoint, params, callback) {
   var xhr = new XMLHttpRequest();
@@ -8,16 +10,22 @@ function query(endpoint, params, callback) {
         var jsn = JSON.parse(xhr.response);
       } catch(e) {
         console.log(xhr.response);
-        alert("Server error");
+        if(alertCount > 0) {
+          alert("Server error");
+          alertCount--;
+        }
         return;
       }
       callback(jsn);
     }
   }
-	xhr.onerror = function() {
-		console.log(xhr);
-		alert("Network error");
-	}
+  xhr.onerror = function() {
+    console.log(xhr);
+    if(alertCount > 0) {
+      alert("Network error");
+      alertCount--;
+    }
+  }
 
   var joined = "";
 	for(key in params) {
@@ -61,11 +69,11 @@ var tile_data = {
     "type": "numerical"
   },
   "B": {
-    "desc": "Bamboo",
+    "desc": "Bam",
     "type": "numerical"
   },
   "C": {
-    "desc": "Crack",
+    "desc": "Crak",
     "type": "numerical"
   },
   "W": {
@@ -210,6 +218,7 @@ function Game(game_id, player_id) {
   var that = this;
   this.state = null;
   this.error = null;
+  this.errorTime = null;
 
   var canvas = document.getElementById("canvas");
   var ctx = canvas.getContext("2d");
@@ -242,6 +251,7 @@ function Game(game_id, player_id) {
   var logHeight = logLineHeight*numLogs+25;
   var mainTextHeight = 1;
   var logDuration = null; //disabled
+  var errorDuration = 10;
   var firstLoad = true;
 
   var startupHash = null;
@@ -259,14 +269,6 @@ function Game(game_id, player_id) {
 
     window.addEventListener('mouseup', function(e) {
       that.mouseup(e.offsetX, e.offsetY);
-    });
-
-    var joinUrl = document.getElementById("joinUrl");
-    joinUrl.addEventListener('mousedown', function(e) {
-      // https://www.w3schools.com/howto/howto_js_copy_clipboard.asp
-      joinUrl.select();
-      joinUrl.setSelectionRange(0, 99999);
-      document.execCommand("copy");
     });
   }
 
@@ -311,9 +313,9 @@ function Game(game_id, player_id) {
     showSuggestTrade();
     showDiscard();
     showMainButtons();
+    showOffer();
     var tile_name = showHover();
     showMetadata(tile_name);
-    showOffer();
     showMainText();
     if(drag_tile_obj) {
       if(override_drag_obj) {
@@ -348,8 +350,11 @@ function Game(game_id, player_id) {
     } else if(phase == "STARTUP") {
       drawText("Ready to play Maj?",
         "supermain", wid/2, mainTextHeight-50);
-      drawText("Choose a nickname!",
-        "main", wid/2, mainTextHeight);
+      if(that.error && that.errorTime && (now()-that.errorTime) < errorDuration) {
+        drawText(that.error, "main", wid/2, mainTextHeight);
+      } else {
+        drawText("Choose a nickname!", "main", wid/2, mainTextHeight);
+      }
       var btnWid = 200;
       var btn = new Button("join", wid*0.5-btnWid*0.5, mainTextHeight+200, btnWid, 60,
         "Join Game", false, function() {
@@ -384,6 +389,16 @@ function Game(game_id, player_id) {
             localStorage.setItem("player_name", pname);
           }
         }
+        joinUrl.onmousedown = null;
+        joinUrl.onkeypress = function(e) {
+          if(phase == "STARTUP") {
+            pname = joinUrl.value;
+            localStorage.setItem("player_name", pname);
+          }
+          if(e.keyCode == 13) {
+            gquery("add_player", {"player_name": pname});
+          }
+        }
       } else if(phase == "WAITING_PLAYERS") {
         var joinWidth = 600;
         joinUrl.style.display="block";
@@ -393,6 +408,14 @@ function Game(game_id, player_id) {
         joinUrl.style.top = (mainTextHeight+70) + "px";
         joinUrl.style.width = joinWidth + "px";
         joinUrl.style.fontSize = "1.5rem";
+        joinUrl.onchange = null;
+        joinUrl.onmousedown = function(e) {
+          // https://www.w3schools.com/howto/howto_js_copy_clipboard.asp
+          joinUrl.select();
+          joinUrl.setSelectionRange(0, 99999);
+          document.execCommand("copy");
+        };
+        joinUrl.onkeypress = null;
       } else {
         joinUrl.style.display="none";
       }
@@ -400,14 +423,22 @@ function Game(game_id, player_id) {
     }
   }
 
+  function getRem() {
+    return Math.max(Math.ceil(that.state.timeout_deadline-now()), 0);
+  }
+
   function showMainText() {
     var phase = that.state.phase;
 
     var log = that.state.log;
-    if(log.length >= 1) {
-      var lastLog = log[log.length-1];
-      if(logDuration == null || now() - lastLog[0] < logDuration) {
-        subText(lastLog[1]);
+    if(that.error && that.errorTime && (now()-that.errorTime) < errorDuration) {
+      subText(that.error);
+    } else {
+      if(log.length >= 1) {
+        var lastLog = log[log.length-1];
+        if(logDuration == null || now() - lastLog[0] < logDuration) {
+          subText(lastLog[1]);
+        }
       }
     }
 
@@ -421,27 +452,33 @@ function Game(game_id, player_id) {
         mainText("Waiting for " + (4-np) + " more players.");
       }
     } else if(phase == "TRADING_MANDATORY") {
-      var dirs = [1, 2, -1, -1, 2, 1]
-      var dirStrs = ["right", "across", "left", "left", "across", "right"];
-      var trades = that.state.trades;
-      var dirStr = dirStrs[trades];
-      var dir = dirs[trades];
-      var nextp = player_name(that.state.player_idx + dir);
-      mainText("Select three tiles to pass " + dirStr + " to " + nextp + ".");
+      if(that.state.commit_offered) {
+        mainText("Waiting for other players to pass.");
+      } else {
+        var dirs = [1, 2, -1, -1, 2, 1]
+        var dirStrs = ["right", "across", "left", "left", "across", "right"];
+        var trades = that.state.trades;
+        var dirStr = dirStrs[trades];
+        var dir = dirs[trades];
+        var nextp = player_name(that.state.player_idx + dir);
+        mainText("Select three tiles to pass " + dirStr + " to " + nextp + ".");
+      }
     } else if(phase == "TRADING_OPTIONAL_SUGGEST") {
       var nextp = player_name(that.state.player_idx + 2);
       mainText("Offer how many tiles to " + nextp + "?");
     } else if(phase == "TRADING_OPTIONAL_EXECUTE") {
       var nextp = player_name(that.state.player_idx + 2);
       var num = that.state.num_offered;
-      if(num > 0) {
+      if(num > 0 && !that.state.commit_offered) {
         var nextp = player_name(that.state.player_idx + 2);
         mainText("Select " + num + " tile(s) to pass across to " + nextp + ".");
       } else {
         mainText("Waiting for other players to pass.");
       }
     } else if (phase == "DISCARD") {
-      if(that.state.your_turn) {
+      if(pending_action == "claim_maj") {
+        mainText("Are you sure?");
+      } else if(that.state.your_turn) {
         mainText("Discard a tile.")
       } else {
         var nextp = player_name(that.state.next_player);
@@ -450,21 +487,36 @@ function Game(game_id, player_id) {
     } else if (phase == "START_TURN") {
       if(that.state.your_turn) {
         if(pending_action == "draw_tile") {
-          var rem = Math.max(Math.ceil(that.state.timeout_deadline-now()), 0);
-          mainText("Waiting... (" + rem + ")");
+          if(that.state.pending_holds) {
+            mainText("Waiting for calls");
+          } else {
+            var rem = getRem();
+            mainText("Waiting... (" + rem + ")");
+          }
         } else if (that.state.top_discard) {
           mainText("Call or draw?");
         } else {
           mainText("Ready to draw?");
         }
       } else if(that.state.can_call_maj[that.state.player_idx] && that.state.top_discard) {
-        mainText("Call?");
+        if(that.state.pending_holds || that.state.timeout_elapsed) {
+          mainText("Call?");
+        } else {
+          var rem = getRem();
+          mainText("Call? (" + rem + ")");
+        }
+      } else if(that.state.pending_holds) {
+        mainText("Waiting for calls");
       } else {
         mainText("Waiting for " + player_name(that.state.next_player));
       }
     } else if (phase == "PENDING_CALL") {
-      var rem = Math.max(Math.ceil(that.state.timeout_deadline-now()), 0);
-      mainText("Waiting... (" + rem + ")");
+      if(that.state.pending_holds) {
+        mainText("Waiting for calls");
+      } else {
+        var rem = getRem();
+        mainText("Waiting for calls... (" + rem + ")");
+      }
     } else if (phase == "PENDING_SHOW") {
       if(that.state.your_turn) {
         mainText("Reveal a group.");
@@ -492,14 +544,15 @@ function Game(game_id, player_id) {
   function checkPendingAction() {
     var phase = that.state.phase;
     if(phase == "START_TURN" && pending_action == "draw_tile") {
-      if (that.state.all_waived || that.state.timeout_elapsed) {
+      if (!that.state.pending_holds && (that.state.all_waived || that.state.timeout_elapsed)) {
         gquery("draw_tile", {});
         pending_action = null;
       }
     }
     if(phase == "PENDING_CALL") {
       if ((that.state.all_waived || that.state.timeout_elapsed) &&
-          that.state.call_idx == that.state.player_idx) {
+          that.state.call_idx == that.state.player_idx &&
+          !that.state.pending_holds) {
         gquery("end_call_phase", {});
       }
     }
@@ -582,6 +635,10 @@ function Game(game_id, player_id) {
             y += thei+1;
           }
           for(var k = 0; k < group.length; k++) {
+            if(x+twid >= wid) {
+              x = basex;
+              y += thei+1;
+            }
             var jokerSwap = false;
             if(isJoker(group[k]) && drag_tile_obj && that.state.your_turn &&
                (phase == "START_TURN" || phase == "DISCARD")) {
@@ -695,7 +752,7 @@ function Game(game_id, player_id) {
   }
 
   function showOffer() {
-    if(isDisqualified()) {
+    if(isDisqualified() || that.state.commit_offered) {
       return;
     }
     var phase = that.state.phase;
@@ -815,45 +872,73 @@ function Game(game_id, player_id) {
   }
 
   function showMainButtons() {
-    if(pending_action!==null || isDisqualified()) {
+    if((pending_action!==null && pending_action!=="claim_maj") || isDisqualified()) {
       return;
     }
     var btnIds = [];
     var phase = that.state.phase;
-    if(that.state.top_discard &&
-       (phase == "START_TURN" || phase == "PENDING_CALL")) {
-      if (that.state.can_call[that.state.player_idx]) {
-        btnIds.push("call");
+    if(that.state.your_waive_state == "HOLD") {
+      btnIds.push("empty");
+      btnIds.push("confirm_call");
+      btnIds.push("waive");
+    } else if(that.state.your_waive_state == "HOLD_MAJ") {
+      btnIds.push("confirm_call_maj");
+      btnIds.push("empty");
+      btnIds.push("waive");
+    } else {
+      if(phase == "TRADING_MANDATORY" && that.state.offered.length == 3 && !that.state.commit_offered) {
+        btnIds.push("commit_offered");
       }
-      if (that.state.can_call_maj[that.state.player_idx]) {
-        btnIds.push("call_maj");
-        if(!that.state.your_turn || phase != "START_TURN"){
-          btnIds.push("waive");
+      if(phase == "TRADING_OPTIONAL_EXECUTE" && that.state.offered.length == that.state.num_offered &&
+         !that.state.commit_offered && that.state.num_offered > 0) {
+        btnIds.push("commit_offered");
+      }
+      if(that.state.top_discard &&
+         (phase == "START_TURN" || phase == "PENDING_CALL")) {
+        if (that.state.can_call[that.state.player_idx]) {
+          btnIds.push("call");
+        }
+        if (that.state.can_call_maj[that.state.player_idx]) {
+          btnIds.push("call_maj");
+          if(!that.state.your_turn || phase != "START_TURN"){
+            btnIds.push("waive");
+          }
         }
       }
-    }
-    if(phase == "START_TURN" && that.state.your_turn) {
-      btnIds.push("draw");
-    }
-    if((phase == "PENDING_SHOW" && that.state.your_turn &&
-       that.state.offered.length >= 3) ||
-       (phase == "SHOWING_MAJ" && that.state.your_turn &&
-       that.state.offered.length >= 1)) {
-      if(that.state.offered.length <= 6) {
-        btnIds.push("show");
+      if(phase == "START_TURN" && that.state.your_turn) {
+        btnIds.push("draw");
+      }
+      if((phase == "PENDING_SHOW" && that.state.your_turn &&
+         that.state.offered.length >= 3) ||
+         (phase == "SHOWING_MAJ" && that.state.your_turn &&
+         that.state.offered.length >= 1)) {
+        if(that.state.offered.length <= 6) {
+          btnIds.push("show");
+        }
+      }
+      if(phase == "DISCARD" && that.state.your_turn && pending_action == null) {
+        btnIds.push("claim_maj");
+      }
+      if(phase == "DISCARD" && that.state.your_turn && pending_action == "claim_maj") {
+        btnIds.push("confirm_maj");
+        btnIds.push("empty");
+        btnIds.push("cancel_maj");
+      }
+      if(phase == "WINNER" && that.state.your_turn) {
+        btnIds.push("retract_maj");
+      }
+      if(phase == "WINNER" || phase == "WALL") {
+        btnIds.push("new_players");
+        btnIds.push("same_players");
       }
     }
-    if(phase == "DISCARD" && that.state.your_turn) {
-      btnIds.push("claim_maj");
-    }
-    if(phase == "WINNER" && that.state.your_turn) {
-      btnIds.push("retract_maj");
-    }
-    if(phase == "WINNER" || phase == "WALL") {
-      btnIds.push("new_players");
-      btnIds.push("same_players");
-    }
     var btns = {
+      "commit_offered": {
+        "text": "Pass Tiles",
+        "callback": function() {
+          gquery("commit_offered", {});
+        }
+      },
       "draw": {
         "text": "Draw",
         "callback": function() {
@@ -864,11 +949,23 @@ function Game(game_id, player_id) {
       "call": {
         "text": "Call",
         "callback": function() {
-          gquery("call_tile", {"maj": false});
+          gquery("place_hold", {"maj": false});
         }
       },
       "call_maj": {
         "text": "Call & Maj",
+        "callback": function() {
+          gquery("place_hold", {"maj": true});
+        }
+      },
+      "confirm_call": {
+        "text": "Confirm Call",
+        "callback": function() {
+          gquery("call_tile", {"maj": false});
+        }
+      },
+      "confirm_call_maj": {
+        "text": "Confirm Maj",
         "callback": function() {
           gquery("call_tile", {"maj": true});
         }
@@ -890,7 +987,20 @@ function Game(game_id, player_id) {
       "claim_maj": {
         "text": "Claim Maj",
         "callback": function() {
+          pending_action = "claim_maj";
+        }
+      },
+      "confirm_maj": {
+        "text": "Confirm Maj",
+        "callback": function() {
           gquery("claim_maj", {});
+          pending_action = null;
+        }
+      },
+      "cancel_maj": {
+        "text": "Cancel",
+        "callback": function() {
+          pending_action = null;
         }
       },
       "retract_maj": {
@@ -908,7 +1018,7 @@ function Game(game_id, player_id) {
       "same_players": {
         "text": "Same Players",
         "callback": function() {
-          //TODO
+          gquery("restart_game", {});
         }
       }
     };
@@ -916,6 +1026,9 @@ function Game(game_id, player_id) {
       var x = centerX() + buttonWidth * (i-btnIds.length/2);
       var y =  mainTextHeight + 50;
       var id = btnIds[i];
+      if(id == "empty") {
+        continue;
+      }
       var data = btns[id];
       var btn = new Button(id, x, y, buttonWidth-10, 40,
         data.text, false, data.callback);
@@ -1037,7 +1150,10 @@ function Game(game_id, player_id) {
     firstLoad = false;
     if(data.error) {
       console.log(data.error);
-      that.error = data.error;
+      if(data.error != "Invalid player id") {
+        that.error = data.error;
+        that.errorTime = now();
+      }
     } else {
       that.state = data;
     }
@@ -1091,7 +1207,7 @@ function init() {
   var player_id = null;
   for(var i = 0; i < parts.length; i++) {
     var kv = parts[i].split("=");
-    if(kv[0] == "game_id") {
+    if(kv[0] == "g") {
       game_id = kv[1];
     } else if (kv[0] == "player_id") {
       player_id = kv[1];
@@ -1100,7 +1216,7 @@ function init() {
 
   if (game_id == null) {
     query("create_game", {}, function(data) {
-      document.location.href = "/?game_id=" + encodeURIComponent(data["game_id"]);
+      document.location.href = "/?g=" + encodeURIComponent(data["game_id"]);
     });
     return;
   }
