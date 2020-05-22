@@ -3,7 +3,7 @@ import datetime
 import random
 import json
 
-with open("www/tile_data.json") as f:
+with open("docs/tile_data.json") as f:
   tile_data = json.load(f)
 
 def rand_player_name():
