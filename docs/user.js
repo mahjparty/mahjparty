@@ -100,7 +100,7 @@ function Game(game_id, player_id) {
   function Tile(tile_str, x, y, width){
     var that = this;
     var t = tile_str.split(":");
-    var img = getImage("/tiles/" + t[0] + ".png");
+    var img = getImage("/maj/tiles/" + t[0] + ".png");
     var height = scaleTile(width);
     this.tid = t[1];
     this.str = tile_str;
@@ -366,7 +366,7 @@ function Game(game_id, player_id) {
     else if(phase == "WAITING_PLAYERS") {
       drawText("Copy this link and send it to your friends to let them join!",
         "sub", centerX(), mainTextHeight+200);
-      var img = getImage("/img/up-arrow.png");
+      var img = getImage("/maj/img/up-arrow.png");
       if(img.is_ready) {
         var w = 50;
         var h = w/img.width*img.height;
@@ -1012,7 +1012,7 @@ function Game(game_id, player_id) {
       "new_players": {
         "text": "New Players",
         "callback": function() {
-          document.location.href="/";
+          document.location.href="/maj/";
         }
       },
       "same_players": {
@@ -1216,7 +1216,7 @@ function init() {
 
   if (game_id == null) {
     query("create_game", {}, function(data) {
-      document.location.href = "/?g=" + encodeURIComponent(data["game_id"]);
+      document.location.href = "/maj/?g=" + encodeURIComponent(data["game_id"]);
     });
     return;
   }
