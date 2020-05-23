@@ -79,7 +79,7 @@ var tile_data = {
   "W": {
     "desc": "Wind",
     "type": "named",
-    "named": ["North","East","South","West"]
+    "named": ["East", "South", "West", "North"]
   },
   "D": {
     "desc": "Dragon",
