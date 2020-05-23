@@ -32,7 +32,7 @@ function query(endpoint, params, callback) {
     joined += encodeURIComponent(key) + "=" + encodeURI(params[key]);
     joined += "&";
 	}
-	var url = "http://35.229.19.246:5000/"+endpoint+"?"+joined;
+	var url = "http://18.206.207.44:5000/"+endpoint+"?"+joined;
   xhr.open('GET', url, true);
   xhr.send('');
 }
