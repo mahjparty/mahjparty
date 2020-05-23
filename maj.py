@@ -29,6 +29,7 @@ class Player:
     self.commit_offered = False
     self.board = []
     self.disqualified = False
+    self.reveal_hand = False
 
   def take_tile(self, tile):
     self.hand.append(tile)
@@ -257,7 +258,7 @@ def create_deck():
     deck.append(Tile(TileTypes.FLOWER, i, idx))
     idx += 1
 
-  for j in range(1,90):
+  for j in range(1,9):
     deck.append(Tile(TileTypes.JOKER, 1, idx))
     idx += 1
 
@@ -317,7 +318,9 @@ class Game:
         self.players[i].json_board() for i in self.player_seq
       ],
       "revealed_hands": [
-        (self.players[i].json_board() if self.players[i].reveal_hand else None)
+        (self.players[i].json_hand() if
+         (self.players[i].reveal_hand and self.phase in (GamePhase.WINNER, GamePhase.WALL))
+         else None)
         for i in self.player_seq
       ],
       "commit_offered": self.players[pid].commit_offered,
@@ -900,6 +903,7 @@ class Game:
 
     player = self.players[player_id]
     player.reveal_hand = True
+    self.log("{} revealed hand.".format(player.name))
 
   def swap_joker(self, player_id, tile, joker):
     if self.phase not in [GamePhase.DISCARD, GamePhase.START_TURN]:

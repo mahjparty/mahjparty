@@ -638,6 +638,7 @@ function Game(game_id, player_id) {
         var twid = tileWidth*0.5;
         var thei = scaleTile(twid);
         var board = that.state.boards[i];
+        var hasTiles = false;
         for(var j = 0; j < board.length; j++) {
           var group = board[j];
           if(x+group.length*twid >= wid) {
@@ -678,9 +679,28 @@ function Game(game_id, player_id) {
             x += twid;
             tile.render();
           }
+
           x += twid*0.2;
+          hasTiles = true;
         }
-        if(board.length > 0) {
+        var rh = that.state.revealed_hands[i];
+        if(rh !== null) {
+          for(var k = 0; k < rh.length; k++) {
+            if(x+twid >= wid) {
+              x = basex;
+              y += thei+1;
+            }
+            tile = new Tile(rh[k], x, y, twid);
+            tile.render();
+            tile.draggable = false;
+            tile.zoomable = true;
+            tiles.push(tile);
+            x += twid;
+            tile.render();
+          }
+          hasTiles = true;
+        }
+        if(hasTiles) {
           y += thei;
         }
       }
@@ -955,10 +975,15 @@ function Game(game_id, player_id) {
     } else if(phase == "WINNER") {
       if(that.state.your_turn) {
         btnIds.push("retract_maj");
+      } else if(that.state.revealed_hands[that.state.player_idx] == null) {
+        btnIds.push("reveal_hand");
       }
       btnIds.push("new_players");
       btnIds.push("same_players");
     } else if(phase == "WALL") {
+      if(that.state.revealed_hands[that.state.player_idx] == null) {
+        btnIds.push("reveal_hand");
+      }
       btnIds.push("new_players");
       btnIds.push("same_players");
     }
@@ -1049,6 +1074,12 @@ function Game(game_id, player_id) {
         "text": "Same Players",
         "callback": function() {
           gquery("restart_game", {});
+        }
+      },
+      "reveal_hand": {
+        "text": "Reveal Hand",
+        "callback": function() {
+          gquery("reveal_hand", {});
         }
       }
     };
