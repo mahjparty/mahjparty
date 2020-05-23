@@ -222,7 +222,6 @@ class GamePhase(Enum):
   TRADING_OPTIONAL_EXECUTE = 4
   DISCARD = 5
   START_TURN = 6
-  PENDING_CALL = 7
   PENDING_SHOW = 8
   SHOWING_MAJ = 9
   WINNER = 10
@@ -232,8 +231,9 @@ class WaiveState(Enum):
   WAIVED = 1
   HOLD = 2
   HOLD_MAJ = 3
-  CALLED = 4
-  NONE = 5
+  CALL = 4
+  CALL_MAJ = 5
+  NONE = 6
 
 def create_deck():
   deck = []
@@ -282,7 +282,6 @@ class Game:
     self.call_idx = None
     self.maj = False
     self.draw_wait_duration = 5
-    self.call_wait_duration = 5
     self.start_ts = datetime.datetime.now()
     self.called_tile = None
     self.waive_state = dict()
@@ -290,9 +289,9 @@ class Game:
 
     if player_id:
       player = self.players[player_id]
-      for p in player:
-        p.restart_game()
       self.log("{} started a new game.".format(player.name))
+      for p in self.players.values():
+        p.restart_game()
       self.start_trading_phase()
 
   def valid_player(self, player_id):
@@ -305,6 +304,7 @@ class Game:
     return self.player_seq.index(player_id)
 
   def get_state(self, pid):
+    call_idx, maj = self.call_winner()
     return {
       "deck_size": len(self.deck),
       "hand": self.players[pid].json_hand(),
@@ -329,22 +329,28 @@ class Game:
       "next_player": self.next_player,
       "your_turn": self.is_player_turn(pid),
       "player_idx": self.find_player_idx(pid),
-      "call_idx": self.call_idx,
-      "maj": self.maj,
       "log": self.show_log(),
-      "call_wait_duration": self.call_wait_duration,
       "draw_wait_duration": self.draw_wait_duration,
-      "all_waived": self.all_waived(),
-      "pending_holds": self.pending_holds(),
       "check_show_tiles": self.check_show_tiles(pid,
         [t.idx for t in self.players[pid].offered]),
       "your_waive_state": self.waive_state.get(pid, WaiveState.NONE).name,
+      "waive_state": [
+        self.waive_state.get(i, WaiveState.NONE).name for i in self.player_seq
+      ],
       "can_call": [
         (self.can_call(i, False) is None) for i in range(len(self.player_seq))
       ],
       "can_call_maj": [
         (self.can_call(i, True) is None) for i in range(len(self.player_seq))
       ],
+      "can_hold": [
+        (self.can_hold(i, False) is None) for i in range(len(self.player_seq))
+      ],
+      "can_hold_maj": [
+        (self.can_hold(i, True) is None) for i in range(len(self.player_seq))
+      ],
+      "can_end_call_phase": self.can_end_call_phase(),
+      "call_idx": call_idx,
       "timeout_elapsed": self.timeout_elapsed(),
       "timeout_deadline": self.ts_to_epoch(self.timeout_deadline()),
       "disqualified": [
@@ -579,11 +585,9 @@ class Game:
     if not self.is_player_turn(player_id):
       return "Not your turn"
 
-    if self.pending_holds():
-      return "Another player is deciding whether to call"
-
-    if not self.all_waived() and not self.timeout_elapsed():
-      return "Let other players have a chance to call first"
+    res = self.can_end_call_phase()
+    if res is not None:
+      return res
 
     player = self.players[player_id]
 
@@ -617,8 +621,7 @@ class Game:
     return idx1 <= idx2
 
   def place_hold(self, player_id, is_maj):
-    if (self.phase != GamePhase.START_TURN and
-        self.phase != GamePhase.PENDING_CALL):
+    if self.phase != GamePhase.START_TURN:
       return "Wrong game phase to call a tile"
 
     player = self.players[player_id]
@@ -626,7 +629,7 @@ class Game:
       return "Disqualified"
 
     player_idx = self.find_player_idx(player_id)
-    res = self.can_call(player_idx, True)
+    res = self.can_hold(player_idx, is_maj)
     if res is not None:
       return res
 
@@ -639,8 +642,7 @@ class Game:
     return None
 
   def call_tile(self, player_id, is_maj):
-    if (self.phase != GamePhase.START_TURN and
-        self.phase != GamePhase.PENDING_CALL):
+    if self.phase != GamePhase.START_TURN:
       return "Wrong game phase to call a tile"
 
     if self.is_prev_turn(player_id):
@@ -651,17 +653,16 @@ class Game:
     if player.disqualified:
       return "Disqualified"
 
-    self.phase = GamePhase.PENDING_CALL
-
     player_idx = self.find_player_idx(player_id)
     res = self.can_call(player_idx, is_maj)
     if res is None:
       if self.call_idx is not None:
         # Can't call again if you already lost priority
         self.waive_state[self.player_seq[self.call_idx]] = WaiveState.WAIVED
-      self.waive_state[player_id] = WaiveState.CALLED
-      self.call_idx = player_idx
-      self.maj = is_maj
+      if is_maj:
+        self.waive_state[player_id] = WaiveState.CALL_MAJ
+      else:
+        self.waive_state[player_id] = WaiveState.CALL
       if is_maj:
         self.log("{} called the tile with maj.".format(player.name))
       else:
@@ -671,55 +672,93 @@ class Game:
 
     return None
 
-  def can_call(self, idx, is_maj):
-    pid = self.player_seq[idx]
+  def can_hold(self, idx, is_maj):
+    player_id = self.player_seq[idx]
     if self.top_discard is None:
       return "No tile to call"
     if self.top_discard.typ == TileTypes.JOKER:
       return "Can't call a joker"
-    if self.players[pid].disqualified:
+    if self.players[player_id].disqualified:
       return "Disqualified"
-    if self.is_prev_turn(pid):
+    if self.is_prev_turn(player_id):
       return "Can't call your own discard"
-    if self.waive_state.get(pid) == WaiveState.WAIVED:
-      return "You already decided not to call"
-    if not is_maj and not self.players[pid].can_call(self.top_discard):
+    if not is_maj and not self.players[player_id].can_call(self.top_discard):
       return "You don't have the right tiles to call"
 
-    if self.call_idx is None:
-      return None
-    if idx == self.call_idx:
-      return "You already called"
-
-    if not self.has_call_priority(idx, is_maj, self.call_idx, self.maj):
-      return "You don't have call priority"
+    for i, pid in enumerate(self.player_seq):
+      ws = self.waive_state.get(pid)
+      if ws == WaiveState.CALL and not self.has_call_priority(idx, is_maj, i, False):
+        return "You don't have call priority"
+      if ws == WaiveState.CALL_MAJ and not self.has_call_priority(idx, is_maj, i, True):
+        return "You don't have call priority"
 
     return None
 
-  def pending_holds(self):
-    for i, pid in enumerate(self.player_seq):
+  def can_call(self, idx, is_maj):
+    res = self.can_hold(idx, is_maj)
+    if res is not None:
+      return res
+
+    pid = self.player_seq[idx]
+    ws = self.waive_state.get(pid)
+
+    # these two tecnically aren't needed, but
+    # they make the error message better
+    if ws == WaiveState.WAIVED:
+      return "You already decided not to call"
+    if ws == WaiveState.CALL or ws == WaiveState.CALL_MAJ:
+      return "You already called"
+
+    if is_maj and ws != WaiveState.HOLD_MAJ:
+      return "No maj hold placed"
+    if not is_maj and ws != WaiveState.HOLD:
+      return "No hold placed"
+
+    return None
+
+  # returns call_idx, is_maj
+  def call_winner(self):
+    call_idx = None
+    maj = None
+    for idx, pid in enumerate(self.player_seq):
       ws = self.waive_state.get(pid)
-      if ((ws == WaiveState.HOLD and self.can_call(i, False)) or
-          (ws == WaiveState.HOLD_MAJ and self.can_call(i, True))):
-        return True
-    return False
+      if ws == WaiveState.CALL:
+        if call_idx is None or self.has_call_priority(idx, False, call_idx, maj):
+          call_idx = idx
+          maj = False
+      elif ws == WaiveState.CALL_MAJ:
+        if call_idx is None or self.has_call_priority(idx, True, call_idx, maj):
+          call_idx = idx
+          maj = True
 
-  def all_waived(self):
-    if (self.phase != GamePhase.START_TURN and
-        self.phase != GamePhase.PENDING_CALL):
-        return None #n/a
+    return call_idx, maj
 
-    for i in range(len(self.player_seq)):
-      if (self.can_call(i, True) is None):
-        return False
+  def can_end_call_phase(self):
+    if self.phase != GamePhase.START_TURN:
+        return "Wrong phase to call."
 
-    return True
+    holds = []
+    for i, pid in enumerate(self.player_seq):
+      if ((self.can_call(i, False) is None) or
+          (self.can_call(i, True) is None)):
+        holds.append(self.players[pid].name)
+
+    if len(holds) == 1:
+      return "{} is deciding whether to call.".format(holds[0])
+    elif len(holds) > 1:
+      return "{} players are deciding whether to call.".format(len(holds))
+
+    if not self.timeout_elapsed():
+      for idx, pid in enumerate(self.player_seq):
+        ws = self.waive_state.get(pid)
+        if ws == WaiveState.NONE and self.can_hold(i, True):
+          return "Waiting for calls"
+
+    return None
 
   def timeout_deadline(self):
     if self.phase == GamePhase.START_TURN:
       return self.start_ts + datetime.timedelta(seconds=self.draw_wait_duration)
-    elif self.phase == GamePhase.PENDING_CALL:
-      return self.start_ts + datetime.timedelta(seconds=self.call_wait_duration)
     else:
       return datetime.datetime(1970, 1, 1)
 
@@ -729,26 +768,33 @@ class Game:
     return now >= deadline
 
   def waive_call(self, player_id):
+    player = self.players[player_id]
+    ws = self.waive_state.get(player_id, WaiveState.NONE)
+    if ws == WaiveState.CALL or ws == WaiveState.CALL_MAJ:
+      return "You already called"
+    elif ws == WaiveState.HOLD or ws == WaiveState.HOLD_MAJ:
+      self.log("{} decided not to call.".format(player.name))
+
     self.waive_state[player_id] = WaiveState.WAIVED
     return None
 
   def end_call_phase(self, player_id):
-    if self.phase != GamePhase.PENDING_CALL:
+    if self.phase != GamePhase.START_TURN:
       return "Cannot end call phase yet"
-
-    if self.pending_holds():
-      return "Another player is deciding whether to call"
-
-    if not self.all_waived() and not self.timeout_elapsed():
-      return "Let other players have a chance to call first"
-
-    player_idx = self.find_player_idx(player_id)
-    if self.call_idx != player_idx:
-      return "Not your turn to call"
 
     player = self.players[player_id]
     if player.disqualified:
       return "Disqualified"
+
+    res = self.can_end_call_phase()
+    if res is not None:
+      return res
+
+    player_idx = self.find_player_idx(player_id)
+
+    call_idx, maj = self.call_winner()
+    if call_idx != player_idx:
+      return "You do not have call priority"
 
     self.next_player = player_idx
 
@@ -759,7 +805,7 @@ class Game:
     self.log("The {} went to {}.".format(self.top_discard.nice_name(), player.name))
     self.top_discard = None
 
-    if self.maj:
+    if maj:
       self.phase = GamePhase.SHOWING_MAJ
       self.log("{} claims maj.".format(player.name))
     else:

@@ -96,6 +96,21 @@ var tile_data = {
   }
 };
 
+function niceName(tile_str) {
+  var data = tile_data[tile_str.charAt(0)];
+  var type = data["type"];
+  var num = Number(tile_str.charAt(1));
+  if(type == "numerical") {
+    return num + " " + data["desc"];
+  } else if(type == "named") {
+    return data["named"][num-1]
+  } else if(type == "equivalent") {
+    return data["desc"];
+  } else {
+    return tile_str;
+  }
+}
+
 function Game(game_id, player_id) {
   function Tile(tile_str, x, y, width){
     var that = this;
@@ -149,18 +164,7 @@ function Game(game_id, player_id) {
     }
 
     this.name = function() {
-      var data = tile_data[tile_str.charAt(0)];
-      var type = data["type"];
-      var num = Number(tile_str.charAt(1));
-      if(type == "numerical") {
-        return num + " " + data["desc"];
-      } else if(type == "named") {
-        return data["named"][num-1]
-      } else if(type == "equivalent") {
-        return data["desc"];
-      } else {
-        return tile_str;
-      }
+      return niceName(tile_str);
     }
 
     this.contains = function(xx, yy) {
@@ -487,41 +491,44 @@ function Game(game_id, player_id) {
         mainText("Waiting for " + nextp + " to discard.");
       }
     } else if (phase == "START_TURN") {
+      var reason = that.state.can_end_call_phase;
+      var rem = getRem();
+      var remText = (rem > 0) ? (" (" + rem + ")") : "";
+      var waitReason = null;
+      if(reason === null) {
+        waitReason = "Waiting for " + player_name(that.state.next_player);
+      } else if(reason == "Waiting for calls") {
+        waitReason = reason + remText;
+      } else {
+        waitReason = reason;
+      }
       if(that.state.your_turn) {
         if(pending_action == "draw_tile") {
-          if(that.state.pending_holds) {
-            mainText("Waiting for calls");
-          } else {
-            var rem = getRem();
-            mainText("Waiting... (" + rem + ")");
-          }
+          mainText(waitReason);
         } else if (that.state.top_discard) {
           mainText("Call or draw?");
         } else {
           mainText("Ready to draw?");
         }
-      } else if(that.state.can_call_maj[that.state.player_idx] && that.state.top_discard) {
-        if(that.state.pending_holds || that.state.timeout_elapsed) {
-          mainText("Call?");
-        } else {
-          var rem = getRem();
-          mainText("Call? (" + rem + ")");
+      } else {
+        if(that.state.your_waive_state == "NONE") {
+          if(that.state.can_hold_maj[that.state.player_idx]) {
+            mainText("Call?" + remText);
+          } else {
+            mainText(waitReason);
+          }
+        } else if (that.state.your_waive_state == "HOLD" ||
+                   that.state.your_waive_state == "HOLD_MAJ") {
+          mainText("Are you sure?")
+        } else if (that.state.your_waive_state == "CALL" ||
+                   that.state.your_waive_state == "CALL_MAJ" ||
+                   that.state.your_waive_state == "WAIVE") {
+          mainText(waitReason);
         }
-      } else if(that.state.pending_holds) {
-        mainText("Waiting for calls");
-      } else {
-        mainText("Waiting for " + player_name(that.state.next_player));
-      }
-    } else if (phase == "PENDING_CALL") {
-      if(that.state.pending_holds) {
-        mainText("Waiting for calls");
-      } else {
-        var rem = getRem();
-        mainText("Waiting for calls... (" + rem + ")");
       }
     } else if (phase == "PENDING_SHOW") {
       if(that.state.your_turn) {
-        mainText("Reveal a group.");
+        mainText("Choose tiles to reveal with " + niceName(that.state.called_tile) + ".");
       } else {
         var nextp = player_name(that.state.next_player);
         mainText("Waiting for " + nextp + " to reveal.");
@@ -546,18 +553,17 @@ function Game(game_id, player_id) {
   function checkPendingAction() {
     var phase = that.state.phase;
     if(phase == "START_TURN" && pending_action == "draw_tile") {
-      if (!that.state.pending_holds && (that.state.all_waived || that.state.timeout_elapsed)) {
+      if (that.state.can_end_call_phase === null) {
         gquery("draw_tile", {});
         pending_action = null;
       }
     }
-    if(phase == "PENDING_CALL") {
-      if ((that.state.all_waived || that.state.timeout_elapsed) &&
-          that.state.call_idx == that.state.player_idx &&
-          !that.state.pending_holds) {
+    if(phase == "START_TURN") {
+      if (that.state.can_end_call_phase === null &&
+          that.state.call_idx == that.state.player_idx) {
         gquery("end_call_phase", {});
         // temporarily disable end_call_phase from triggering again
-        that.state.timeout_elapsed = false;
+        that.state.can_end_call_phase = "Pending";
       }
     }
   }
@@ -616,7 +622,7 @@ function Game(game_id, player_id) {
     var y = 40;
     for(var i = 0; i < pl.length; i++) {
       var typ = "name";
-      if(i == that.state.next_player && ["DISCARD","START_TURN","PENDING_CALL"].indexOf(phase) !== -1) {
+      if(i == that.state.next_player && ["DISCARD","START_TURN"].indexOf(phase) !== -1) {
         typ = "bold_name";
       }
       var name = pl[i];
@@ -843,7 +849,7 @@ function Game(game_id, player_id) {
       });
       drop_target.render();
       drop_targets.push(drop_target);
-    } else if((phase=="START_TURN" || phase == "PENDING_CALL") && that.state.top_discard) {
+    } else if(phase=="START_TURN" && that.state.top_discard) {
       var tile = new Tile(that.state.top_discard, x, y, tileWidth);
       tile.render();
       tile.zoomable = false;
@@ -882,60 +888,79 @@ function Game(game_id, player_id) {
     }
     var btnIds = [];
     var phase = that.state.phase;
-    if(that.state.your_waive_state == "HOLD") {
-      btnIds.push("empty");
-      btnIds.push("confirm_call");
-      btnIds.push("waive");
-    } else if(that.state.your_waive_state == "HOLD_MAJ") {
-      btnIds.push("confirm_call_maj");
-      btnIds.push("empty");
-      btnIds.push("waive");
-    } else {
-      if(phase == "TRADING_MANDATORY" && that.state.offered.length == 3 && !that.state.commit_offered) {
+    if(phase == "START_TURN") {
+      if(that.state.can_call[that.state.player_idx]) {
+        btnIds.push("empty");
+        btnIds.push("confirm_call");
+        btnIds.push("waive");
+      } else if(that.state.can_call_maj[that.state.player_idx]) {
+        btnIds.push("confirm_call_maj");
+        btnIds.push("empty");
+        btnIds.push("waive");
+      } else {
+        var waive = false;
+        if (that.state.can_hold[that.state.player_idx] && that.state.your_waive_state == "NONE") {
+          btnIds.push("hold");
+          waive = true;
+        }
+        if (that.state.can_hold_maj[that.state.player_idx] && that.state.your_waive_state == "NONE") {
+          btnIds.push("hold_maj");
+          waive = true;
+        }
+        var draw = that.state.your_turn;
+        var ws = that.state.waive_state;
+        for(var i = 0; i < ws.length && draw; i++) {
+          if(ws[i] == "CALL" || ws[i] == "CALL_MAJ") {
+            draw = false;
+          }
+        }
+        if(draw) {
+          btnIds.push("draw");
+        } else if(waive) {
+          btnIds.push("waive");
+        }
+      }
+    } else if(phase == "TRADING_MANDATORY") {
+      if(that.state.offered.length == 3 && !that.state.commit_offered) {
         btnIds.push("commit_offered");
       }
-      if(phase == "TRADING_OPTIONAL_EXECUTE" && that.state.offered.length == that.state.num_offered &&
+    } else if(phase == "TRADING_OPTIONAL_EXECUTE") {
+      if(that.state.offered.length == that.state.num_offered &&
          !that.state.commit_offered && that.state.num_offered > 0) {
         btnIds.push("commit_offered");
       }
-      if(that.state.top_discard &&
-         (phase == "START_TURN" || phase == "PENDING_CALL")) {
-        if (that.state.can_call[that.state.player_idx]) {
-          btnIds.push("call");
-        }
-        if (that.state.can_call_maj[that.state.player_idx]) {
-          btnIds.push("call_maj");
-          if(!that.state.your_turn || phase != "START_TURN"){
-            btnIds.push("waive");
-          }
-        }
+    } else if(phase == "PENDING_SHOW") {
+      if(that.state.your_turn &&
+         that.state.offered.length <= 6 &&
+         that.state.offered.length >= 3 &&
+         that.state.check_show_tiles === null) {
+        btnIds.push("show");
       }
-      if(phase == "START_TURN" && that.state.your_turn) {
-        btnIds.push("draw");
+    } else if(phase == "SHOWING_MAJ") {
+      if(that.state.your_turn &&
+         that.state.offered.length <= 6 &&
+         that.state.offered.length >= 1 &&
+         that.state.check_show_tiles === null) {
+        btnIds.push("show");
       }
-      if((phase == "PENDING_SHOW" && that.state.your_turn &&
-         that.state.offered.length >= 3) ||
-         (phase == "SHOWING_MAJ" && that.state.your_turn &&
-         that.state.offered.length >= 1)) {
-        if(that.state.offered.length <= 6 && that.state.check_show_tiles === null) {
-          btnIds.push("show");
-        }
-      }
-      if(phase == "DISCARD" && that.state.your_turn && pending_action == null) {
+    } else if(phase == "DISCARD") {
+      if(that.state.your_turn && pending_action == null) {
         btnIds.push("claim_maj");
       }
-      if(phase == "DISCARD" && that.state.your_turn && pending_action == "claim_maj") {
+      if(that.state.your_turn && pending_action == "claim_maj") {
         btnIds.push("confirm_maj");
         btnIds.push("empty");
         btnIds.push("cancel_maj");
       }
-      if(phase == "WINNER" && that.state.your_turn) {
+    } else if(phase == "WINNER") {
+      if(that.state.your_turn) {
         btnIds.push("retract_maj");
       }
-      if(phase == "WINNER" || phase == "WALL") {
-        btnIds.push("new_players");
-        btnIds.push("same_players");
-      }
+      btnIds.push("new_players");
+      btnIds.push("same_players");
+    } else if(phase == "WALL") {
+      btnIds.push("new_players");
+      btnIds.push("same_players");
     }
     var btns = {
       "commit_offered": {
@@ -951,13 +976,13 @@ function Game(game_id, player_id) {
           pending_action = "draw_tile";
         }
       },
-      "call": {
+      "hold": {
         "text": "Call",
         "callback": function() {
           gquery("place_hold", {"maj": false});
         }
       },
-      "call_maj": {
+      "hold_maj": {
         "text": "Call & Maj",
         "callback": function() {
           gquery("place_hold", {"maj": true});
