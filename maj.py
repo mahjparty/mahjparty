@@ -93,20 +93,20 @@ class Player:
     self.hand, discarded = self.pick_tile(self.hand, tile)
     return discarded
 
-  def show_tiles(self, tiles, call_tile):
+  def check_show_tiles(self, tiles, call_tile):
     ftiles = self.find_tiles(tiles)
     if len(ftiles) != len(tiles):
       return False
-
-    if (call_tile is not None and
-        not all((t.matches(call_tile) for t in ftiles))):
+    if (not all((t.matches(call_tile) for t in ftiles))):
       return False
 
+    return True
+
+  def show_tiles(self, tiles):
     if self.offered:
       self.hand, self.offered = self.merge_left(self.hand, self.offered)
     self.hand, group = self.pick_tiles(self.hand, tiles)
     self.board.append(group)
-    return True
 
   def find_tiles(self, tiles):
     res = []
@@ -332,6 +332,8 @@ class Game:
       "draw_wait_duration": self.draw_wait_duration,
       "all_waived": self.all_waived(),
       "pending_holds": self.pending_holds(),
+      "check_show_tiles": self.check_show_tiles(pid,
+        [t.idx for t in self.players[pid].offered]),
       "your_waive_state": self.waive_state.get(pid, WaiveState.NONE).name,
       "can_call": [
         self.can_call(i, False) for i in range(len(self.player_seq))
@@ -753,7 +755,7 @@ class Game:
     else:
       self.phase = GamePhase.PENDING_SHOW
 
-  def show_tiles(self, player_id, tiles):
+  def check_show_tiles(self, player_id, tiles):
     if (self.phase != GamePhase.PENDING_SHOW and
         self.phase != GamePhase.SHOWING_MAJ):
       return "Wrong game phase to show tiles"
@@ -765,6 +767,9 @@ class Game:
     if len(tiles) < 3 and self.phase == GamePhase.PENDING_SHOW:
       return "Must reveal at least three tiles"
 
+    if len(tiles) < 1 or len(tiles) > 6:
+      return "Must reveal 1-6 tiles at a time"
+
     player = self.players[player_id]
 
     if player.disqualified:
@@ -774,11 +779,18 @@ class Game:
       if self.called_tile is None:
         return "Nothing to call"
 
-      res = player.show_tiles(tiles, self.called_tile)
-      if not res:
+      if not player.check_show_tiles(tiles, self.called_tile):
         return "Those tiles don't match {}!".format(self.called_tile.nice_name())
-    else:
-      player.show_tiles(tiles, None)
+
+    return None
+
+  def show_tiles(self, player_id, tiles):
+    res = self.check_show_tiles(player_id, tiles)
+    if res is not None:
+      return res
+
+    player = self.players[player_id]
+    player.show_tiles(tiles)
 
     self.log("{} showed tiles.".format(player.name))
 

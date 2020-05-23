@@ -242,6 +242,8 @@ function Game(game_id, player_id) {
   var tileData = null;
   var override_drag_obj = null;
   var pname = localStorage.getItem("player_name") || "";
+  var actionTime = null; // suppress state updates when action was taken recently
+  var actionDuration = 0.25;
   var exit = false;
 
   var buttonWidth = 140;
@@ -915,7 +917,7 @@ function Game(game_id, player_id) {
          that.state.offered.length >= 3) ||
          (phase == "SHOWING_MAJ" && that.state.your_turn &&
          that.state.offered.length >= 1)) {
-        if(that.state.offered.length <= 6) {
+        if(that.state.offered.length <= 6 && that.state.check_show_tiles === null) {
           btnIds.push("show");
         }
       }
@@ -1144,12 +1146,17 @@ function Game(game_id, player_id) {
   }
 
   function gquery(endpoint, data) {
+    actionTime = now();
     data["game_id"] = game_id;
     data["player_id"] = player_id;
-    query(endpoint, data, that.recvState);
+    query(endpoint, data, function(data) {
+      actionTime = null;
+      that.recvState(data)
+    });
   }
 
   this.recvState = function(data) {
+
     firstLoad = false;
     if(data.error) {
       console.log(data.error);
@@ -1158,6 +1165,10 @@ function Game(game_id, player_id) {
         that.errorTime = now();
       }
     } else {
+      // temporarily suppress updates
+      if(actionTime !== null && (now()-actionTime) < actionDuration) {
+        return;
+      }
       that.state = data;
     }
   }
