@@ -257,15 +257,14 @@ def create_deck():
     deck.append(Tile(TileTypes.FLOWER, i, idx))
     idx += 1
 
-  for j in range(1,9):
+  for j in range(1,90):
     deck.append(Tile(TileTypes.JOKER, 1, idx))
     idx += 1
 
   return deck
 
 class Game:
-  def __init__(self, start_time):
-    self.init_ts = datetime.datetime.now()
+  def __init__(self):
     self.players = {}
     self.player_seq = []
     self.max_players = 4
@@ -274,6 +273,7 @@ class Game:
     self.restart_game(None)
 
   def restart_game(self, player_id):
+    self.init_ts = datetime.datetime.now()
     self.trades = 0
     self.deck = create_deck()
     self.next_player = 0
@@ -316,6 +316,10 @@ class Game:
       "boards": [
         self.players[i].json_board() for i in self.player_seq
       ],
+      "revealed_hands": [
+        (self.players[i].json_board() if self.players[i].reveal_hand else None)
+        for i in self.player_seq
+      ],
       "commit_offered": self.players[pid].commit_offered,
       "num_offered": self.players[pid].num_offered,
       "offered": self.players[pid].json_offered(),
@@ -336,10 +340,10 @@ class Game:
         [t.idx for t in self.players[pid].offered]),
       "your_waive_state": self.waive_state.get(pid, WaiveState.NONE).name,
       "can_call": [
-        self.can_call(i, False) for i in range(len(self.player_seq))
+        (self.can_call(i, False) is None) for i in range(len(self.player_seq))
       ],
       "can_call_maj": [
-        self.can_call(i, True) for i in range(len(self.player_seq))
+        (self.can_call(i, True) is None) for i in range(len(self.player_seq))
       ],
       "timeout_elapsed": self.timeout_elapsed(),
       "timeout_deadline": self.ts_to_epoch(self.timeout_deadline()),
@@ -605,12 +609,12 @@ class Game:
     if maj2 and not maj1:
       return False
     # check wrap-around
-    if idx1 <= self.next_player:
+    if idx1 < self.next_player:
       idx1 += len(self.player_seq)
-    if idx2 <= self.next_player:
+    if idx2 < self.next_player:
       idx2 += len(self.player_seq)
 
-    return idx1 < idx2
+    return idx1 <= idx2
 
   def place_hold(self, player_id, is_maj):
     if (self.phase != GamePhase.START_TURN and
@@ -622,8 +626,9 @@ class Game:
       return "Disqualified"
 
     player_idx = self.find_player_idx(player_id)
-    if not self.can_call(player_idx, True):
-      return "You don't have call priority"
+    res = self.can_call(player_idx, True)
+    if res is not None:
+      return res
 
     if is_maj:
       self.waive_state[player_id] = WaiveState.HOLD_MAJ
@@ -649,7 +654,8 @@ class Game:
     self.phase = GamePhase.PENDING_CALL
 
     player_idx = self.find_player_idx(player_id)
-    if self.can_call(player_idx, is_maj):
+    res = self.can_call(player_idx, is_maj)
+    if res is None:
       if self.call_idx is not None:
         # Can't call again if you already lost priority
         self.waive_state[self.player_seq[self.call_idx]] = WaiveState.WAIVED
@@ -661,36 +667,40 @@ class Game:
       else:
         self.log("{} called the tile.".format(player.name))
     else:
-      return "You don't have call priority"
+      return res
 
     return None
 
   def can_call(self, idx, is_maj):
     pid = self.player_seq[idx]
     if self.top_discard is None:
-      return False
+      return "No tile to call"
     if self.top_discard.typ == TileTypes.JOKER:
-      return False
+      return "Can't call a joker"
     if self.players[pid].disqualified:
-      return False
+      return "Disqualified"
     if self.is_prev_turn(pid):
-      return False
+      return "Can't call your own discard"
     if self.waive_state.get(pid) == WaiveState.WAIVED:
-      return False
+      return "You already decided not to call"
     if not is_maj and not self.players[pid].can_call(self.top_discard):
-      return False
+      return "You don't have the right tiles to call"
 
     if self.call_idx is None:
-      return True
+      return None
     if idx == self.call_idx:
-      return False
+      return "You already called"
 
-    return self.has_call_priority(idx, is_maj, self.call_idx, self.maj)
+    if not self.has_call_priority(idx, is_maj, self.call_idx, self.maj):
+      return "You don't have call priority"
+
+    return None
 
   def pending_holds(self):
     for i, pid in enumerate(self.player_seq):
-      if (self.can_call(i, True) and
-        self.waive_state.get(pid) in [WaiveState.HOLD, WaiveState.HOLD_MAJ]):
+      ws = self.waive_state.get(pid)
+      if ((ws == WaiveState.HOLD and self.can_call(i, False)) or
+          (ws == WaiveState.HOLD_MAJ and self.can_call(i, True))):
         return True
     return False
 
@@ -700,7 +710,7 @@ class Game:
         return None #n/a
 
     for i in range(len(self.player_seq)):
-      if self.can_call(i, True):
+      if (self.can_call(i, True) is None):
         return False
 
     return True
@@ -837,6 +847,14 @@ class Game:
     else:
       self.next_player = nxt
 
+  def reveal_hand(self, player_id):
+    if (self.phase != GamePhase.WINNER and
+        self.phase != GamePhase.WALL):
+      return "Wrong game phase to reveal hand"
+
+    player = self.players[player_id]
+    player.reveal_hand = True
+
   def swap_joker(self, player_id, tile, joker):
     if self.phase not in [GamePhase.DISCARD, GamePhase.START_TURN]:
       return "Wrong game phase to swap joker"
@@ -859,4 +877,3 @@ class Game:
         return None
 
     return "Not a valid Joker swap"
-

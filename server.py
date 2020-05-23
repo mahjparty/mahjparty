@@ -99,8 +99,7 @@ def add_player():
 @app.route('/create_game')
 def create_game():
   game_id = rand_id()
-  start_time = datetime.datetime.now()
-  game = Game(start_time)
+  game = Game()
   games[game_id] = game
   return send({"game_id": game_id})
 
@@ -303,6 +302,18 @@ def restart_game():
     return err(player_id)
 
   res = game.restart_game(player_id)
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
+
+@app.route('/reveal_hand')
+def reveal_hand():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
+  res = game.reveal_hand(player_id)
   if res is None:
     return send(game.get_state(player_id))
   else:
