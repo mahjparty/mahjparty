@@ -1254,7 +1254,7 @@ function Game(game_id, player_id) {
       var xx = drag_tile_obj.centerX();
       var yy = drag_tile_obj.centerY();
       for (var i = 0; i < drop_targets.length; i++) {
-        if (drop_targets[i].contains(x,y)) {
+        if (drop_targets[i].contains(xx,yy)) {
           drop_targets[i].callback(drag_tile);
         }
       }
