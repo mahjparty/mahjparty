@@ -554,6 +554,8 @@ function Game(game_id, player_id) {
           that.state.call_idx == that.state.player_idx &&
           !that.state.pending_holds) {
         gquery("end_call_phase", {});
+        // temporarily disable end_call_phase from triggering again
+        that.state.timeout_elapsed = false;
       }
     }
   }
@@ -834,6 +836,7 @@ function Game(game_id, player_id) {
     if(phase == "DISCARD" && that.state.your_turn) {
       var drop_target = new DropTarget(x, y, tileWidth, function(drag_tile) {
         that.state.hand = removeTile(that.state.hand, drag_tile);
+        that.state.top_discard = drag_tile;
         gquery("discard_tile", {"tile": sendTiles([drag_tile])});
       });
       drop_target.render();
