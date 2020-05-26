@@ -475,7 +475,7 @@ class Game:
           if num > 0:
             skip = False
 
-          self.log("{} and {} agreed to trade {} tiles.".format(p1.name, p2.name, num))
+          self.log("{} and {} agreed to pass {} tiles.".format(p1.name, p2.name, num))
 
         if skip:
           self.start_main()
@@ -490,7 +490,7 @@ class Game:
     dirs = [1, 2, -1, -1, 2, 1]
     dirStrs = ["right", "across", "left", "left", "across", "right"];
     dir = dirs[self.trades]
-    self.log("Players traded 3 tiles {}.".format(dirStrs[self.trades]))
+    self.log("Players passed 3 tiles {}.".format(dirStrs[self.trades]))
     for idx in range(len(self.player_seq)):
       idx2 = (idx + dir) % len(self.player_seq)
       p1 = self.player_idx(idx)
@@ -509,7 +509,7 @@ class Game:
       p1.commit_offered = False
       p2.commit_offered = False
 
-      self.log("{} and {} traded {} tiles.".format(p1.name, p2.name, p1.num_offered))
+      self.log("{} and {} passed {} tiles.".format(p1.name, p2.name, p1.num_offered))
 
       p1.send_offer(p2)
       p2.send_offer(p1)
@@ -753,8 +753,8 @@ class Game:
 
     if not self.timeout_elapsed():
       for idx, pid in enumerate(self.player_seq):
-        ws = self.waive_state.get(pid)
-        if ws == WaiveState.NONE and self.can_hold(i, True):
+        ws = self.waive_state.get(pid, WaiveState.NONE)
+        if ws == WaiveState.NONE and (self.can_hold(i, True) is None):
           return "Waiting for calls"
 
     return None

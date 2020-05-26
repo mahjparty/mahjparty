@@ -556,8 +556,12 @@ function Game(game_id, player_id) {
   function checkPendingAction() {
     var phase = that.state.phase;
     if(phase == "START_TURN" && pending_action == "draw_tile") {
-      if (that.state.can_end_call_phase === null) {
-        gquery("draw_tile", {});
+      if(that.state.your_turn) {
+        if (that.state.can_end_call_phase === null) {
+          gquery("draw_tile", {});
+          pending_action = null;
+        }
+      } else {
         pending_action = null;
       }
     }
@@ -606,12 +610,12 @@ function Game(game_id, player_id) {
 
   function showMetadata(tile_name) {
     var basex = wid-logWidth+5;
-    var basey = hei-logHeight-65;
+    var basey = hei-logHeight-50;
     drawText("Quick Info", "heading", basex, basey);
-    drawText("Player Name: " + player_name(that.state.player_idx), "log", basex, basey+20);
+    drawText("Player Name: " + player_name(that.state.player_idx), "log", basex, basey+15);
     var txt = "Selected Tile: " + (tile_name || "None");
-    drawText(txt, "log", basex, basey+35);
-    drawText("Tiles Remaining: " + that.state.deck_size, "log", basex, basey+50);
+    drawText(txt, "log", basex, basey+30);
+    drawText("Tiles Remaining: " + that.state.deck_size, "log", basex, basey+45);
   }
 
   function isJoker(tile_str) {
@@ -1124,7 +1128,7 @@ function Game(game_id, player_id) {
       ctx.font = "20px Arial";
       ctx.textAlign = "center";
     } else if(type == "heading") {
-      ctx.font = "bold 17px Arial";
+      ctx.font = "bold 16px Arial";
       ctx.textAlign = "left";
     } else if(type == "name") {
       ctx.font = "15px Arial";
