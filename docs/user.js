@@ -522,7 +522,10 @@ function Game(game_id, player_id) {
           mainText("Are you sure?")
         } else if (that.state.your_waive_state == "CALL" ||
                    that.state.your_waive_state == "CALL_MAJ" ||
-                   that.state.your_waive_state == "WAIVE") {
+                   that.state.your_waive_state == "WAIVED") {
+          mainText(waitReason);
+        } else {
+          // Unreachable
           mainText(waitReason);
         }
       }
