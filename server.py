@@ -13,6 +13,7 @@ app = Flask(__name__)
 CORS(app)
 
 games = {}
+game_by_words = {}
 
 def rand_id():
   letters = string.ascii_lowercase + string.digits + string.ascii_uppercase

@@ -6,6 +6,9 @@ import json
 with open("docs/tile_data.json") as f:
   tile_data = json.load(f)
 
+with open("words.txt") as f:
+  word_data = [w.strip() for w in f]
+
 def rand_player_name():
   part1 = ["Happy", "Proud", "Excited", "Curious", "Quick", "Honest",
            "Cheery", "Ambitious", "Trustworthy", "Energetic", "Hungry",
@@ -272,6 +275,7 @@ class Game:
     self.phase = GamePhase.WAITING_PLAYERS
     self.log_entries = []
     self.restart_game(None)
+    self.words = random.choices(word_data, k=4)
 
   def restart_game(self, player_id):
     self.init_ts = datetime.datetime.now()
