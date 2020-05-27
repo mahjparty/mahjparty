@@ -13,7 +13,7 @@ app = Flask(__name__)
 CORS(app)
 
 games = {}
-game_by_words = {}
+game_id_by_words = {}
 
 def rand_id():
   letters = string.ascii_lowercase + string.digits + string.ascii_uppercase
@@ -102,6 +102,17 @@ def create_game():
   game_id = rand_id()
   game = Game()
   games[game_id] = game
+  game_id_by_words[game.words_key()] = game_id
+  return send({"game_id": game_id})
+
+@app.route('/lookup_game')
+def lookup_game():
+  words = request.args.get('words')
+  words_key = "".join([word[:3] for word in words.split()])
+  game_id = game_id_by_words.get(words_key)
+  if game_id is None:
+    return err("Game not found")
+
   return send({"game_id": game_id})
 
 @app.route('/game_state')

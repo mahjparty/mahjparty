@@ -1,4 +1,5 @@
 var alertCount = 1;
+var host = localStorage.getItem("host") || "http://18.206.207.44:5000";
 
 //https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/response
 function query(endpoint, params, callback) {
@@ -32,7 +33,7 @@ function query(endpoint, params, callback) {
     joined += encodeURIComponent(key) + "=" + encodeURI(params[key]);
     joined += "&";
 	}
-	var url = "http://18.206.207.44:5000/"+endpoint+"?"+joined;
+	var url = host+"/"+endpoint+"?"+joined;
   xhr.open('GET', url, true);
   xhr.send('');
 }
@@ -246,6 +247,7 @@ function Game(game_id, player_id) {
   var tileData = null;
   var override_drag_obj = null;
   var pname = localStorage.getItem("player_name") || "";
+  var words = null;
   var actionTime = null; // suppress state updates when action was taken recently
   var actionDuration = 0.25;
   var exit = false;
@@ -341,18 +343,86 @@ function Game(game_id, player_id) {
   }
 
   function showStartup() {
+    var joinUrl = document.getElementById("joinUrl");
     var phase = null;
     if(that.state !== null) {
       phase = that.state.phase;
     } else if(firstLoad) {
       phase = "LOADING";
+    } else if(game_id === null) {
+      phase = "CREATE_GAME";
     } else {
       phase = "STARTUP";
     }
-    var joinUrl = document.getElementById("joinUrl");
+
+    if(phase == "CREATE_GAME") {
+      words = joinUrl.value;
+    } else if(phase == "STARTUP") {
+      if(pname !== joinUrl.value) {
+        pname = joinUrl.value;
+        localStorage.setItem("player_name", pname);
+      }
+    }
+
+    function validWords(w) {
+      var sp = (w || "").split(" ");
+      if(sp.length != 4) {
+        return false;
+      }
+      var valid = (sp.length == 4);
+      for(var i = 0; i < sp.length; i++) {
+        if(sp[i].length < 3) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function lookupWords(w) {
+      if(validWords(w)) {
+        query("lookup_game", {"words": w}, function(data) {
+          if(data.error) {
+            console.log(data.error);
+            that.error = data.error;
+            that.errorTime = now();
+          } else {
+            document.location.href = "/?g=" + encodeURIComponent(data["game_id"]);
+          }
+        });
+      }
+    }
+
     var newHash = phase + "," + centerX() + "," + mainTextHeight;
     if(phase == "LOADING") {
       drawText("Loading Mahj Party...", "supermain", wid/2, mainTextHeight);
+    } else if(phase == "CREATE_GAME") {
+      drawText("It's Mahj Party Time!", "supermain", wid/2, mainTextHeight);
+
+      var errOffset = 190;
+      if(that.error && that.errorTime && (now()-that.errorTime) < errorDuration) {
+        drawText(that.error, "main", wid/2, mainTextHeight+errOffset);
+      } else {
+        drawText("Or join an existing game by entering the four code words:", "main", wid/2, mainTextHeight+errOffset);
+      }
+
+      var btnWid = 200;
+      var btn1 = new Button("create_game", wid*0.5-btnWid*0.5, mainTextHeight+50, btnWid, 60,
+        "Create New Game", false, function() {
+        query("create_game", {}, function(data) {
+          document.location.href = "/?g=" + encodeURIComponent(data["game_id"]);
+        });
+      });
+      btn1.render();
+      buttons.push(btn1);
+
+      if(validWords(words)) {
+        var btn2 = new Button("lookup_game", wid*0.5-btnWid*0.5, mainTextHeight+250, btnWid, 60,
+          "Join Game", false, function() {
+            lookupWords(words);
+        });
+        btn2.render();
+        buttons.push(btn2);
+      }
     } else if(phase == "STARTUP") {
       drawText("Ready to play Mahj?",
         "supermain", wid/2, mainTextHeight-50);
@@ -378,10 +448,28 @@ function Game(game_id, player_id) {
         var h = w/img.width*img.height;
         ctx.drawImage(img, centerX()-w*0.5, mainTextHeight+115, w, h);
       }
+      drawText("Or join using the following code words:",
+        "sub", centerX(), mainTextHeight+250);
+      drawText(that.state.words_full,
+        "bold_sub", centerX(), mainTextHeight+275);
     }
     if(newHash != startupHash) {
-      if(phase == "STARTUP") {
-        var joinWidth = 600;
+      var joinWidth = 600;
+      if(phase == "CREATE_GAME") {
+        joinUrl.style.display="block";
+        joinUrl.value = words || "";
+        joinUrl.style.left = (wid*0.5 - joinWidth*0.5) + "px";
+        joinUrl.style.top = (mainTextHeight+200) + "px";
+        joinUrl.style.width = joinWidth + "px";
+        joinUrl.style.fontSize = "2rem";
+        joinUrl.maxLength = 100;
+        joinUrl.onmousedown = null;
+        joinUrl.onkeypress = function(e) {
+          if(e.keyCode == 13) {
+            lookupWords(words);
+          }
+        }
+      } else if(phase == "STARTUP") {
         joinUrl.style.display="block";
         joinUrl.value = pname;
         joinUrl.style.left = (wid*0.5 - joinWidth*0.5) + "px";
@@ -389,24 +477,13 @@ function Game(game_id, player_id) {
         joinUrl.style.width = joinWidth + "px";
         joinUrl.style.fontSize = "2rem";
         joinUrl.maxLength = 20;
-        joinUrl.onchange = function() {
-          if(phase == "STARTUP") {
-            pname = joinUrl.value;
-            localStorage.setItem("player_name", pname);
-          }
-        }
         joinUrl.onmousedown = null;
         joinUrl.onkeypress = function(e) {
-          if(phase == "STARTUP") {
-            pname = joinUrl.value;
-            localStorage.setItem("player_name", pname);
-          }
           if(e.keyCode == 13) {
             gquery("add_player", {"player_name": pname});
           }
         }
       } else if(phase == "WAITING_PLAYERS") {
-        var joinWidth = 600;
         joinUrl.style.display="block";
         joinUrl.maxLength = null;
         joinUrl.value = document.location.href;
@@ -1127,6 +1204,9 @@ function Game(game_id, player_id) {
     } else if(type == "sub") {
       ctx.font = "20px Arial";
       ctx.textAlign = "center";
+    } else if(type == "bold_sub") {
+      ctx.font = "bold 20px Arial";
+      ctx.textAlign = "center";
     } else if(type == "heading") {
       ctx.font = "bold 16px Arial";
       ctx.textAlign = "left";
@@ -1223,7 +1303,7 @@ function Game(game_id, player_id) {
     firstLoad = false;
     if(data.error) {
       console.log(data.error);
-      if(data.error != "Invalid player id") {
+      if(data.error != "Invalid player id" && data.error != "Invalid game id") {
         that.error = data.error;
         that.errorTime = now();
       }
@@ -1289,13 +1369,6 @@ function init() {
     } else if (kv[0] == "player_id") {
       player_id = kv[1];
     }
-  }
-
-  if (game_id == null) {
-    query("create_game", {}, function(data) {
-      document.location.href = "/?g=" + encodeURIComponent(data["game_id"]);
-    });
-    return;
   }
 
   if (player_id == null) {

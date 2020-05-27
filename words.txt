@@ -1,5 +1,4 @@
 abandon
-abbey
 abide
 able
 aboard
@@ -8,7 +7,6 @@ absence
 abundant
 accept
 acid
-acquired
 acres
 act
 adapted
@@ -72,7 +70,6 @@ assault
 ate
 attached
 audience
-aught
 aunt
 author
 avail
@@ -347,19 +344,16 @@ fog
 folded
 fond
 food
-for
 fought
 frame
 free
 friend
-fro
 fruit
 full
 fun
 fur
 future
 gain
-gallant
 game
 garden
 gas
@@ -630,7 +624,6 @@ oak
 oath
 obey
 object
-obliged
 obtain
 obvious
 occasion
@@ -651,7 +644,6 @@ order
 organ
 origin
 other
-ought
 our
 out
 over
@@ -683,7 +675,6 @@ pick
 piece
 pile
 pine
-pious
 pipe
 pistol
 pit
@@ -889,13 +880,11 @@ ten
 term
 test
 text
-than
 the
 thick
 thomas
 thread
 thunder
-thy
 tide
 tie
 tight
@@ -910,7 +899,6 @@ together
 told
 tom
 tone
-too
 top
 tore
 tossed
@@ -927,7 +915,6 @@ tune
 turn
 twelve
 twice
-two
 type
 tyranny
 ugly

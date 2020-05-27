@@ -275,7 +275,7 @@ class Game:
     self.phase = GamePhase.WAITING_PLAYERS
     self.log_entries = []
     self.restart_game(None)
-    self.words = random.choices(word_data, k=4)
+    self.words = random.sample(word_data, 4)
 
   def restart_game(self, player_id):
     self.init_ts = datetime.datetime.now()
@@ -298,6 +298,12 @@ class Game:
       for p in self.players.values():
         p.restart_game()
       self.start_trading_phase()
+
+  def words_key(self):
+    return "".join([word[:3] for word in self.words])
+
+  def words_full(self):
+    return " ".join(self.words)
 
   def valid_player(self, player_id):
     return player_id in self.players
@@ -363,6 +369,7 @@ class Game:
       "disqualified": [
         self.players[i].disqualified for i in self.player_seq
       ],
+      "words_full": self.words_full()
     }
 
   def ts_to_epoch(self, ts):
