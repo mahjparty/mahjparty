@@ -20,7 +20,7 @@ def rand_id():
 
 @app.route('/')
 def hello_world():
-  return 'Welcome to the Maj API!'
+  return 'Welcome to the Mahj API!'
 
 def send(jsn):
   return json.dumps(jsn)
@@ -207,7 +207,7 @@ def call_tile():
 
   maj = parse_bool(request.args.get('maj'))
   if maj is None:
-    return err("Invalid maj state")
+    return err("Invalid mahj state")
 
   res = game.call_tile(player_id, maj)
   if res is None:
@@ -247,7 +247,7 @@ def place_hold():
 
   maj = parse_bool(request.args.get('maj'))
   if maj is None:
-    return err("Invalid maj state")
+    return err("Invalid mahj state")
 
   res = game.place_hold(player_id, maj)
   if res is None:

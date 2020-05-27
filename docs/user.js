@@ -115,7 +115,7 @@ function Game(game_id, player_id) {
   function Tile(tile_str, x, y, width){
     var that = this;
     var t = tile_str.split(":");
-    var img = getImage("/maj/tiles/" + t[0] + ".png");
+    var img = getImage("/tiles/" + t[0] + ".png");
     var height = scaleTile(width);
     this.tid = t[1];
     this.str = tile_str;
@@ -352,9 +352,9 @@ function Game(game_id, player_id) {
     var joinUrl = document.getElementById("joinUrl");
     var newHash = phase + "," + centerX() + "," + mainTextHeight;
     if(phase == "LOADING") {
-      drawText("Loading Maj...", "supermain", wid/2, mainTextHeight);
+      drawText("Loading Mahj Party...", "supermain", wid/2, mainTextHeight);
     } else if(phase == "STARTUP") {
-      drawText("Ready to play Maj?",
+      drawText("Ready to play Mahj?",
         "supermain", wid/2, mainTextHeight-50);
       if(that.error && that.errorTime && (now()-that.errorTime) < errorDuration) {
         drawText(that.error, "main", wid/2, mainTextHeight);
@@ -372,7 +372,7 @@ function Game(game_id, player_id) {
     else if(phase == "WAITING_PLAYERS") {
       drawText("Copy this link and send it to your friends to let them join!",
         "sub", centerX(), mainTextHeight+200);
-      var img = getImage("/maj/img/up-arrow.png");
+      var img = getImage("/img/up-arrow.png");
       if(img.is_ready) {
         var w = 50;
         var h = w/img.width*img.height;
@@ -449,7 +449,7 @@ function Game(game_id, player_id) {
     }
 
     if(isDisqualified()) {
-      mainText("Maj retracted.");
+      mainText("Mahj retracted.");
     } else if(phase == "WAITING_PLAYERS") {
       var np = that.state.player_names.length;
       if(np == 3) {
@@ -541,11 +541,11 @@ function Game(game_id, player_id) {
         mainText("Reveal a group.");
       } else {
         var nextp = player_name(that.state.next_player);
-        mainText("Waiting for " + nextp + " to reveal maj.");
+        mainText("Waiting for " + nextp + " to reveal mahj.");
       }
     } else if (phase == "WINNER") {
       var nextp = player_name(that.state.next_player);
-      mainText(nextp + " won with Maj!");
+      mainText(nextp + " won with Mahj!");
     } else if (phase == "WALL") {
       mainText("It's a wall game.");
     } else {
@@ -1015,7 +1015,7 @@ function Game(game_id, player_id) {
         }
       },
       "hold_maj": {
-        "text": "Call & Maj",
+        "text": "Call & Mahj",
         "callback": function() {
           gquery("place_hold", {"maj": true});
         }
@@ -1027,7 +1027,7 @@ function Game(game_id, player_id) {
         }
       },
       "confirm_call_maj": {
-        "text": "Confirm Maj",
+        "text": "Confirm Mahj",
         "callback": function() {
           gquery("call_tile", {"maj": true});
         }
@@ -1047,13 +1047,13 @@ function Game(game_id, player_id) {
         }
       },
       "claim_maj": {
-        "text": "Claim Maj",
+        "text": "Claim Mahj",
         "callback": function() {
           pending_action = "claim_maj";
         }
       },
       "confirm_maj": {
-        "text": "Confirm Maj",
+        "text": "Confirm Mahj",
         "callback": function() {
           gquery("claim_maj", {});
           pending_action = null;
@@ -1066,7 +1066,7 @@ function Game(game_id, player_id) {
         }
       },
       "retract_maj": {
-        "text": "Retract Maj",
+        "text": "Retract Mahj",
         "callback": function() {
           gquery("retract_maj", {});
         }
@@ -1074,7 +1074,7 @@ function Game(game_id, player_id) {
       "new_players": {
         "text": "New Players",
         "callback": function() {
-          document.location.href="/maj/";
+          document.location.href="/";
         }
       },
       "same_players": {
@@ -1293,7 +1293,7 @@ function init() {
 
   if (game_id == null) {
     query("create_game", {}, function(data) {
-      document.location.href = "/maj/?g=" + encodeURIComponent(data["game_id"]);
+      document.location.href = "/?g=" + encodeURIComponent(data["game_id"]);
     });
     return;
   }

@@ -671,7 +671,7 @@ class Game:
       else:
         self.waive_state[player_id] = WaiveState.CALL
       if is_maj:
-        self.log("{} called the tile with maj.".format(player.name))
+        self.log("{} called the tile with mahj.".format(player.name))
       else:
         self.log("{} called the tile.".format(player.name))
     else:
@@ -717,7 +717,7 @@ class Game:
       return "You already called"
 
     if is_maj and ws != WaiveState.HOLD_MAJ:
-      return "No maj hold placed"
+      return "No mahj hold placed"
     if not is_maj and ws != WaiveState.HOLD:
       return "No hold placed"
 
@@ -814,7 +814,7 @@ class Game:
 
     if maj:
       self.phase = GamePhase.SHOWING_MAJ
-      self.log("{} claims maj.".format(player.name))
+      self.log("{} claims mahj.".format(player.name))
     else:
       self.phase = GamePhase.PENDING_SHOW
 
@@ -868,7 +868,7 @@ class Game:
 
   def claim_maj(self, player_id):
     if self.phase != GamePhase.DISCARD:
-      return "Wrong game phase to claim maj"
+      return "Wrong game phase to claim mahj"
 
     if not self.is_player_turn(player_id):
       return "Not your turn"
@@ -878,11 +878,11 @@ class Game:
       return "Disqualified"
 
     self.phase = GamePhase.SHOWING_MAJ
-    self.log("{} claims maj.".format(player.name))
+    self.log("{} claims mahj.".format(player.name))
 
   def retract_maj(self, player_id):
     if self.phase != GamePhase.WINNER:
-      return "Wrong game phase to retract maj"
+      return "Wrong game phase to retract mahj"
 
     if not self.is_player_turn(player_id):
       return "Not your turn"
@@ -893,7 +893,7 @@ class Game:
 
     player.disqualified = True
     self.phase = GamePhase.START_TURN
-    self.log("{} retracted maj.".format(player.name))
+    self.log("{} retracted mahj.".format(player.name))
     nxt = self.get_next_player(self.next_player)
     if nxt is None:
       self.wall_game()
