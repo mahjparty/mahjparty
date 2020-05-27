@@ -442,6 +442,10 @@ class Game:
       if len(player.offered) != player.num_offered:
         return "Need to trade {} tiles".format(player.num_offered)
 
+    for t in player.offered:
+        if t.typ == TileTypes.JOKER:
+            return "Jokers cannot be passed"
+
     player.commit_offered = True
     self.check_trade()
     return None
