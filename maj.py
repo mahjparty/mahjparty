@@ -89,9 +89,20 @@ class Player:
 
     self.hand, _ = self.merge_left(self.hand, new_hand)
 
-  def send_offer(self, other):
-    other.take_tiles(self.offered)
+  def send_offer(self, other, num_send, leftovers):
+    if len(self.offered) == num_send:
+      other.take_tiles(self.offered)
+    elif len(self.offered) > num_send:
+      extra = len(self.offered) - num_send
+      other.take_tiles(self.offered[extra:])
+      leftovers += self.offered[:extra]
+    elif len(self.offered) < num_send:
+      missing = num_send - len(self.offered)
+      other.take_tiles(self.offered + leftovers[:missing])
+      leftovers = leftovers[missing:]
+
     self.offered = []
+    return leftovers
 
   def discard_tile(self, tile):
     self.hand, discarded = self.pick_tile(self.hand, tile)
@@ -369,7 +380,8 @@ class Game:
       "disqualified": [
         self.players[i].disqualified for i in self.player_seq
       ],
-      "words_full": self.words_full()
+      "words_full": self.words_full(),
+      "blind_pass_allowed": self.blind_pass_allowed()
     }
 
   def ts_to_epoch(self, ts):
@@ -446,8 +458,7 @@ class Game:
 
     player = self.players[player_id]
     if self.phase == GamePhase.TRADING_MANDATORY:
-      if not (len(player.offered) == 3):
-        #(len(player.offered) < 3 and self.trades in [2,5])):
+      if not (len(player.offered) == 3 or self.blind_pass_allowed()):
         return "Need to trade three tiles"
     elif self.phase == GamePhase.TRADING_OPTIONAL_EXECUTE:
       if len(player.offered) != player.num_offered:
@@ -463,7 +474,7 @@ class Game:
 
   def check_trade(self):
     if self.phase == GamePhase.TRADING_MANDATORY:
-      ready = all((len(p.offered) == 3 and p.commit_offered
+      ready = all(((len(p.offered) == 3 or self.blind_pass_allowed()) and p.commit_offered
                    for p in self.players.values()))
       if ready:
         self.do_mandatory_trade()
@@ -501,17 +512,49 @@ class Game:
     else:
       return "Wrong game phase to suggest a trade"
 
+  def blind_pass_allowed(self):
+    return self.trades == 2 or self.trades == 5
+
   def do_mandatory_trade(self):
     dirs = [1, 2, -1, -1, 2, 1]
     dirStrs = ["right", "across", "left", "left", "across", "right"];
-    dir = dirs[self.trades]
+    dirNum = dirs[self.trades]
     self.log("Players passed 3 tiles {}.".format(dirStrs[self.trades]))
-    for idx in range(len(self.player_seq)):
-      idx2 = (idx + dir) % len(self.player_seq)
-      p1 = self.player_idx(idx)
-      p2 = self.player_idx(idx2)
-      p1.send_offer(p2)
-      p1.commit_offered = False
+
+    nplayers = len(self.player_seq)
+
+    if dirNum == 2:
+      for offset in range(nplayers):
+        idx1 = offset % nplayers
+        idx2 = (offset + dirNum) % nplayers
+        p1 = self.player_idx(idx1)
+        p2 = self.player_idx(idx2)
+        p1.send_offer(p2, 3, [])
+        p1.commit_offered = False
+    else:
+      ocount = [len(self.player_idx(idx).offered) for idx in range(nplayers)]
+      max_idx = None
+      max_val = 0
+      for idx in range(nplayers):
+        val = ocount[idx]
+        if val >= max_val:
+          max_val = val
+          max_idx = idx
+
+      leftovers = []
+      rng = range(nplayers)
+      if dirNum == -1:
+        rng = (-x for x in rng)
+      for offset in rng:
+        idx1 = (max_idx + offset) % nplayers
+        idx2 = (max_idx + offset + dirNum) % nplayers
+        p1 = self.player_idx(idx1)
+        p2 = self.player_idx(idx2)
+        leftovers = p1.send_offer(p2, ocount[idx2], leftovers)
+        p1.commit_offered = False
+
+      if len(leftovers) != 0:
+        print("Leftovers remaining!")
 
     self.trades += 1
     if self.trades == 6:

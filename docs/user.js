@@ -1025,8 +1025,12 @@ function Game(game_id, player_id) {
         }
       }
     } else if(phase == "TRADING_MANDATORY") {
-      if(that.state.offered.length == 3 && !that.state.commit_offered) {
-        btnIds.push("commit_offered");
+      if(!that.state.commit_offered) {
+        if(that.state.offered.length == 3) {
+          btnIds.push("commit_offered");
+        } else if(that.state.blind_pass_allowed) {
+          btnIds.push("blind_pass");
+        }
       }
     } else if(phase == "TRADING_OPTIONAL_EXECUTE") {
       if(that.state.offered.length == that.state.num_offered &&
@@ -1074,6 +1078,12 @@ function Game(game_id, player_id) {
     var btns = {
       "commit_offered": {
         "text": "Pass Tiles",
+        "callback": function() {
+          gquery("commit_offered", {});
+        }
+      },
+      "blind_pass": {
+        "text": "Blind Pass",
         "callback": function() {
           gquery("commit_offered", {});
         }
