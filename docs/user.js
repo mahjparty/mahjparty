@@ -278,6 +278,27 @@ function Game(game_id, player_id) {
     window.addEventListener('mouseup', function(e) {
       that.mouseup(e.offsetX, e.offsetY);
     });
+
+    canvas.addEventListener('touchstart', function(e) {
+      var touch = e.touches[0];
+      if(touch) {
+        that.mousedown(touch.pageX, touch.pageY);
+      }
+    });
+
+    canvas.addEventListener('touchmove', function(e) {
+      var touch = e.touches[0];
+      if(touch) {
+        that.mousemove(touch.pageX, touch.pageY);
+      }
+    });
+
+    window.addEventListener('touchend', function(e) {
+      var touch = e.changedTouches[0];
+      if(touch) {
+        that.mouseup(touch.pageX, touch.pageY);
+      }
+    });
   }
 
   function centerX() {
