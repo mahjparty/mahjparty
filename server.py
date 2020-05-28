@@ -108,7 +108,7 @@ def create_game():
 @app.route('/lookup_game')
 def lookup_game():
   words = request.args.get('words')
-  words_key = "".join([word[:3] for word in words.split()])
+  words_key = "".join([word[:3] for word in words.split()]).lower()
   game_id = game_id_by_words.get(words_key)
   if game_id is None:
     return err("Game not found")
