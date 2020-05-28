@@ -252,7 +252,7 @@ function Game(game_id, player_id) {
   var actionDuration = 0.25;
   var exit = false;
 
-  var buttonWidth = 140;
+  var buttonWidth = 160;
   var logWidth = 450;
   var numLogs = 10;
   var logLineHeight = 15;
@@ -570,7 +570,7 @@ function Game(game_id, player_id) {
     } else if (phase == "START_TURN") {
       var reason = that.state.can_end_call_phase;
       var rem = getRem();
-      var remText = (rem > 0) ? (" (" + rem + ")") : "";
+      var remText = (rem >= 0) ? (" (" + rem + ")") : "";
       var waitReason = null;
       if(reason === null) {
         waitReason = "Waiting for " + player_name(that.state.next_player);
@@ -636,11 +636,14 @@ function Game(game_id, player_id) {
       if(that.state.your_turn) {
         if (that.state.can_end_call_phase === null) {
           gquery("draw_tile", {});
-          pending_action = null;
+          pending_action = "drawing_tile";
         }
       } else {
         pending_action = null;
       }
+    }
+    if(phase != "START_TURN" && pending_action == "drawing_tile") {
+      pending_action = null;
     }
     if(phase == "START_TURN") {
       if (that.state.can_end_call_phase === null &&
@@ -1030,6 +1033,9 @@ function Game(game_id, player_id) {
           btnIds.push("commit_offered");
         } else if(that.state.blind_pass_allowed) {
           btnIds.push("blind_pass");
+        } else if(that.state.trades == 3 && !that.state.commit_offered &&
+                  that.state.offered.length == 0) {
+          btnIds.push("skip_passes");
         }
       }
     } else if(phase == "TRADING_OPTIONAL_EXECUTE") {
@@ -1086,6 +1092,12 @@ function Game(game_id, player_id) {
         "text": "Blind Pass",
         "callback": function() {
           gquery("commit_offered", {});
+        }
+      },
+      "skip_passes": {
+        "text": "Stop Charleston",
+        "callback": function() {
+          gquery("skip_passes", {});
         }
       },
       "draw": {

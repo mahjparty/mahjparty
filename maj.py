@@ -472,6 +472,27 @@ class Game:
     self.check_trade()
     return None
 
+  def skip_passes(self, player_id):
+    if self.phase != GamePhase.TRADING_MANDATORY:
+      return "Wrong game phase to stop Charleston"
+
+    if self.trades != 3:
+      return "Wrong time to stop Charleston"
+
+    player = self.players[player_id]
+    if player.commit_offered:
+      return "You already passed"
+
+    for p in self.players.values():
+      p.offer_tiles([])
+      p.commit_offered = False
+
+    self.trades = 6
+    self.phase = GamePhase.TRADING_OPTIONAL_SUGGEST
+
+    self.log("{} stopped the Charleston.".format(player.name))
+    return None
+
   def check_trade(self):
     if self.phase == GamePhase.TRADING_MANDATORY:
       ready = all(((len(p.offered) == 3 or self.blind_pass_allowed()) and p.commit_offered
@@ -567,10 +588,11 @@ class Game:
       p1.commit_offered = False
       p2.commit_offered = False
 
-      self.log("{} and {} passed {} tiles.".format(p1.name, p2.name, p1.num_offered))
+      n = p1.num_offered
+      self.log("{} and {} passed {} tiles.".format(p1.name, p2.name, n))
 
-      p1.send_offer(p2)
-      p2.send_offer(p1)
+      p1.send_offer(p2, n, [])
+      p2.send_offer(p1, n, [])
 
     self.start_main()
 
@@ -812,7 +834,7 @@ class Game:
     if not self.timeout_elapsed():
       for idx, pid in enumerate(self.player_seq):
         ws = self.waive_state.get(pid, WaiveState.NONE)
-        if ws == WaiveState.NONE and (self.can_hold(i, True) is None):
+        if ws == WaiveState.NONE and (self.can_hold(idx, True) is None):
           return "Waiting for calls"
 
     return None

@@ -27,7 +27,11 @@ def randomOffer(pids, num=3):
   for pid in pids:
     gs = query("game_state", game_id=game_id, player_id=pid)
 
-    tiles = random.sample(gs["hand"], num)
+    while True:
+      tiles = random.sample(gs["hand"], num)
+      if not any((t.startswith("J") for t in tiles)):
+        break
+
     query("offer_tiles", game_id=game_id, player_id=pid, tiles=sendTiles(tiles))
     query("commit_offered", game_id=game_id, player_id=pid)
 

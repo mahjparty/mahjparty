@@ -151,6 +151,18 @@ def commit_offered():
   else:
     return err(res)
 
+@app.route('/skip_passes')
+def skip_passes():
+  game, player_id = get_game_player()
+  if game is None:
+    return err(player_id)
+
+  res = game.skip_passes(player_id)
+  if res is None:
+    return send(game.get_state(player_id))
+  else:
+    return err(res)
+
 @app.route('/rearrange_tiles')
 def rearrange_tiles():
   game, player_id = get_game_player()
