@@ -151,6 +151,9 @@ function Game(game_id, player_id) {
         ctx.strokeStyle='#000';
         ctx.strokeRect(x, y, width, height);
       }
+      if(width == tileWidth && showTileName) {
+        drawText(this.name(), "tile", x+width*0.3, y-6);
+      }
     }
 
     this.hoverRender = function(xx, yy, twid) {
@@ -206,7 +209,7 @@ function Game(game_id, player_id) {
       }
     }
     this.callback = callback;
-    this.render = function() {
+    this.render = function(typ) {
       if(selected || (pressed_btn == id)) {
         ctx.fillStyle = '#F00';
       } else if (that.contains(mx, my)) {
@@ -215,7 +218,9 @@ function Game(game_id, player_id) {
         ctx.fillStyle = '#CCC';
       }
       ctx.fillRect(x, y, width, height);
-      drawText(text, "button", x+width*0.5, y+height*0.5+7);
+      var text_type = typ || "button";
+      var ht = (text_type == "button") ? 14 : 10;
+      drawText(text, text_type, x+width*0.5, y+height*0.5+ht*0.5);
     }
   }
 
@@ -251,6 +256,7 @@ function Game(game_id, player_id) {
   var actionTime = null; // suppress state updates when action was taken recently
   var actionDuration = 0.25;
   var exit = false;
+  var showTileName = !!(localStorage.getItem("show_tile_name"));
 
   var buttonWidth = 160;
   var logWidth = 450;
@@ -528,7 +534,7 @@ function Game(game_id, player_id) {
   }
 
   function getRem() {
-    return Math.max(Math.ceil(that.state.timeout_deadline-now()), 0);
+    return Math.ceil(that.state.timeout_deadline-now());
   }
 
   function showMainText() {
@@ -711,12 +717,20 @@ function Game(game_id, player_id) {
 
   function showMetadata(tile_name) {
     var basex = wid-logWidth+5;
-    var basey = hei-logHeight-50;
+    var basey = hei-logHeight-75;
     drawText("Quick Info", "heading", basex, basey);
     drawText("Player Name: " + player_name(that.state.player_idx), "log", basex, basey+15);
     var txt = "Selected Tile: " + (tile_name || "None");
     drawText(txt, "log", basex, basey+30);
     drawText("Tiles Remaining: " + that.state.deck_size, "log", basex, basey+45);
+
+    var btnText = showTileName ? "Hide Tile Names" : "Show Tile Names";
+    var btn = new Button("show_tile_name", basex, basey+50, buttonWidth-10, 25, btnText, false, function() {
+      showTileName = !showTileName;
+      localStorage.setItem("show_tile_name", showTileName);
+    });
+    btn.render("small_button");
+    buttons.push(btn);
   }
 
   function isJoker(tile_str) {
@@ -1237,7 +1251,7 @@ function Game(game_id, player_id) {
     return width/179*240;
   }
 
-  function drawText(text, type, x, y, center) {
+  function drawText(text, type, x, y) {
     if(type == "supermain") {
       ctx.font = "40px Arial";
       ctx.textAlign = "center";
@@ -1266,6 +1280,13 @@ function Game(game_id, player_id) {
       ctx.font = "20px Arial";
       ctx.textAlign = "left";
       x -= ctx.measureText(text).width*0.5;
+    } else if(type == "small_button") {
+      ctx.font = "15px Arial";
+      ctx.textAlign = "left";
+      x -= ctx.measureText(text).width*0.5;
+    } else if(type == "tile") {
+      ctx.font = "15px Arial";
+      ctx.textAlign = "left";
     } else {
       ctx.font = "8px Arial";
     }
