@@ -1,4 +1,4 @@
-var alertCount = 1;
+var alertCount = localStorage.getItem("alert_count") || 0;
 var host = localStorage.getItem("host") || "http://18.206.207.44:5000";
 
 //https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/response
@@ -290,6 +290,7 @@ function Game(game_id, player_id) {
       if(touch) {
         that.mousedown(touch.pageX, touch.pageY);
       }
+      e.preventDefault();
     });
 
     canvas.addEventListener('touchmove', function(e) {
@@ -297,6 +298,7 @@ function Game(game_id, player_id) {
       if(touch) {
         that.mousemove(touch.pageX, touch.pageY);
       }
+      e.preventDefault();
     });
 
     window.addEventListener('touchend', function(e) {
@@ -304,6 +306,7 @@ function Game(game_id, player_id) {
       if(touch) {
         that.mouseup(touch.pageX, touch.pageY);
       }
+      e.preventDefault();
     });
   }
 
@@ -1381,6 +1384,8 @@ function Game(game_id, player_id) {
   }
 
   this.mousedown = function(x,y) {
+    mx = x;
+    my = y;
     for(var i = 0; i < tiles.length; i++) {
       if(tiles[i].contains(x,y) && tiles[i].draggable) {
         drag_tile = tiles[i].str;
@@ -1401,6 +1406,8 @@ function Game(game_id, player_id) {
   }
 
   this.mouseup = function(x,y) {
+    mx = x;
+    my = y;
     if (drag_tile_obj) {
       var xx = drag_tile_obj.centerX();
       var yy = drag_tile_obj.centerY();
