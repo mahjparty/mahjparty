@@ -279,7 +279,7 @@ def create_deck():
   return deck
 
 class Game:
-  def __init__(self):
+  def __init__(self, game_id):
     self.players = {}
     self.player_seq = []
     self.max_players = 4
@@ -287,6 +287,7 @@ class Game:
     self.log_entries = []
     self.restart_game(None)
     self.words = random.sample(word_data, 4)
+    self.game_id = game_id
 
   def restart_game(self, player_id):
     self.init_ts = datetime.datetime.now()

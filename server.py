@@ -6,14 +6,30 @@ import string
 import random
 import datetime
 import re
+import os
+import pickle
 from flask_cors import CORS
-
+from apscheduler.schedulers.background import BackgroundScheduler
 
 app = Flask(__name__)
 CORS(app)
 
 games = {}
 game_id_by_words = {}
+
+def load_games():
+  base = "games"
+  for fname in os.listdir(base):
+    with open(os.path.join(base, fname), "rb") as f:
+      game = pickle.load(f)
+      games[game.game_id] = game
+      game_id_by_words[game.words_full()] = game.game_id
+
+def save_games():
+  for game in games.values():
+    fname = "games/game_" + game.game_id + ".pkl"
+    with open(fname, "wb") as f:
+      pickle.dump(game, f)
 
 def rand_id():
   letters = string.ascii_lowercase + string.digits + string.ascii_uppercase
@@ -100,7 +116,7 @@ def add_player():
 @app.route('/create_game')
 def create_game():
   game_id = rand_id()
-  game = Game()
+  game = Game(game_id)
   games[game_id] = game
   game_id_by_words[game.words_key()] = game_id
   return send({"game_id": game_id})
@@ -363,5 +379,12 @@ def swap_joker():
   else:
     return err(res)
 
+scheduler = BackgroundScheduler()
+job = scheduler.add_job(save_games, 'interval', seconds=30)
+scheduler.start()
+
+load_games()
+
 if __name__ == "__main__":
   app.run(host="0.0.0.0", port=5000, processes=1)
+
