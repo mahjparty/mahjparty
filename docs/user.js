@@ -177,7 +177,7 @@ function Game(game_id, player_id) {
       } else if(["D","J","F"].indexOf(t0.charAt(0)) !== -1) {
         style = null;
       }
-      var textOnly = (style !== null) && showTileName; // && width != tileWidth;
+      var textOnly = (style !== null) && showTileName;
       var im = textOnly ? blank : img;
       tryDrawImage(im, x, y, width, height);
       if(textOnly) {
@@ -235,7 +235,7 @@ function Game(game_id, player_id) {
     this.render = function() {
       ctx.setLineDash([1,1]);
       ctx.lineWidth=1;
-      ctx.strokeStyle='#000';
+      ctx.strokeStyle='#111';
       ctx.strokeRect(x, y, width, height);
     }
   }
@@ -370,7 +370,7 @@ function Game(game_id, player_id) {
       canvas.width = wid;
       canvas.height = hei;
 
-      tileWidth = Math.min((wid-logWidth) / 14, 197);
+      tileWidth = Math.min((wid-logWidth) / 14.11, 197);
       tileHeight = scaleTile(tileWidth);
 
       mainTextHeight = scaleTile(tileWidth*0.5)*5+20;
@@ -392,9 +392,9 @@ function Game(game_id, player_id) {
 
     showDragTile();
     showDiscardPile();
+    showHand();
     showSidePanel();
     showPlayers();
-    showHand();
     showLog();
     showSuggestTrade();
     showDiscard();
@@ -755,6 +755,11 @@ function Game(game_id, player_id) {
   function showSidePanel() {
     ctx.fillStyle = '#EEE';
     ctx.fillRect(wid-logWidth, 0, logWidth, hei);
+
+    ctx.setLineDash([]);
+    ctx.lineWidth=tileWidth*0.03;
+    ctx.strokeStyle = '#222';
+    ctx.strokeRect(wid-logWidth, 0, logWidth, hei);
   }
 
   function showLog() {
@@ -929,13 +934,19 @@ function Game(game_id, player_id) {
     var y = hei-tileHeight*1.08;
     var rimg = getImage("/img/rack7.jpg");
     var rheight = tileHeight*1.115;
-    ctx.setLineDash([3,1]);
-    ctx.strokeStyle = '#622';
-    ctx.lineWidth = tileWidth*0.03;
+    var slices = 10;
+    var sliceHei = rheight*0.007;
+    for(var i = slices; i >= 0; i--) {
+      var shade = i/slices;
+      var r = Math.round(255*shade + 100*(1-shade));
+      var g = Math.round(255*shade + 60*(1-shade));
+      var b = Math.round(255*shade + 60*(1-shade));
+      ctx.fillStyle='rgb('+r+','+g+','+b +')';
+      ctx.fillRect(0, hei-rheight-sliceHei*i*0.95, tileWidth*14+i*sliceHei, rheight+i*sliceHei);
+    }
     if(rimg.is_ready) {
       ctx.drawImage(rimg, 0, hei-rheight, tileWidth*14, rheight*1.04);
     }
-    ctx.strokeRect(0, hei-rheight, tileWidth*14, rheight);
 
     var h = that.state.hand;
     var x = 0;
@@ -996,7 +1007,6 @@ function Game(game_id, player_id) {
     } else if((phase == "PENDING_SHOW" || phase == "SHOWING_MAJ")
        && that.state.your_turn) {
       var off = that.state.offered;
-      var force_target = (off.length==0);
       var num_tiles = Math.max(off.length, 1);
       var x = centerX() - num_tiles*0.5*tileWidth;
       var y = hei-tileHeight*2.5;
@@ -1012,17 +1022,19 @@ function Game(game_id, player_id) {
       }
 
 
+      var force_target = true;
       for(let i = 0; i < off.length + 1; i++) {
         drop_target = new DropTarget(x, y, tileWidth, function(drag_tile) {
           offerTile(drag_tile, i, true);
         });
 
-        if((i == 0 && force_target) ||
+        if((i == off.length && force_target) ||
           (drag_tile_obj && drop_target.contains(
           drag_tile_obj.centerX(), drag_tile_obj.centerY()))) {
           drop_target.render();
           drop_targets.push(drop_target);
           x += tileWidth;
+          force_target = false;
         }
 
         if(i < off.length &&
