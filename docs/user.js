@@ -546,6 +546,7 @@ function Game(game_id, player_id) {
             lookupWords(words);
           }
         }
+        joinUrl.focus();
       } else if(phase == "STARTUP") {
         joinUrl.style.display="block";
         joinUrl.value = pname;
@@ -560,6 +561,7 @@ function Game(game_id, player_id) {
             gquery("add_player", {"player_name": pname});
           }
         }
+        joinUrl.focus();
       } else if(phase == "WAITING_PLAYERS") {
         joinUrl.style.display="block";
         joinUrl.maxLength = null;
@@ -572,8 +574,12 @@ function Game(game_id, player_id) {
         joinUrl.onmousedown = function(e) {
           // https://www.w3schools.com/howto/howto_js_copy_clipboard.asp
           joinUrl.select();
-          joinUrl.setSelectionRange(0, 99999);
+          joinUrl.setSelectionRange(0, joinUrl.value.length);
           document.execCommand("copy");
+          setTimeout(function() {
+            joinUrl.select();
+            joinUrl.setSelectionRange(0, joinUrl.value.length);
+          }, 200);
         };
         joinUrl.onkeypress = null;
       } else {
@@ -1192,18 +1198,21 @@ function Game(game_id, player_id) {
       "commit_offered": {
         "text": "Pass Tiles",
         "callback": function() {
+          that.state.commit_offered = true;
           gquery("commit_offered", {});
         }
       },
       "blind_pass": {
         "text": "Blind Pass",
         "callback": function() {
+          that.state.commit_offered = true;
           gquery("commit_offered", {});
         }
       },
       "skip_passes": {
         "text": "Stop Charleston",
         "callback": function() {
+          that.state.commit_offered = true;
           gquery("skip_passes", {});
         }
       },
