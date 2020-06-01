@@ -1431,7 +1431,7 @@ function Game(game_id, player_id) {
       that.state.offered = insertList(off, drag_tile, pos);
     } else {
       var res = [];
-      for(var i = 0; i <= off.length; i++) {
+      for(var i = 0; i <= off.length || i <= pos; i++) {
         if(pos == i) {
           res.push(drag_tile);
         } else if(i < off.length && off[i] != drag_tile) {
