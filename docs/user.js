@@ -795,7 +795,7 @@ function Game(game_id, player_id) {
   function showPlayers() {
     var pl = that.state.player_names;
     var phase = that.state.phase;
-    drawText("Players", "heading", wid-logWidth+5, 15);
+    drawText("Players", "heading", wid-logWidth+5, 18);
     var y = 40;
     for(var i = 0; i < pl.length; i++) {
       var typ = "name";
