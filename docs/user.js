@@ -1,5 +1,6 @@
 var alertCount = localStorage.getItem("alert_count") || 0;
-var host = localStorage.getItem("host") || "http://18.206.207.44:5000";
+var http = document.location.href[4] == "s" ? "https": "http";
+var host = localStorage.getItem("host") || (http + "://api.mahj.party");
 
 //https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/response
 function query(endpoint, params, callback) {
@@ -104,11 +105,26 @@ function niceName(tile_str) {
   if(type == "numerical") {
     return num + " " + data["desc"];
   } else if(type == "named") {
-    return data["named"][num-1]
+    return data["named"][num-1];
   } else if(type == "equivalent") {
     return data["desc"];
   } else {
     return tile_str;
+  }
+}
+
+function shortName(tile_str) {
+  var data = tile_data[tile_str.charAt(0)];
+  var type = data["type"];
+  var num = Number(tile_str.charAt(1));
+  if(type == "numerical") {
+    return "" + num;
+  } else if(type == "named") {
+    return data["named"][num-1].charAt(0);
+  } else if(type == "equivalent") {
+    return data["desc"].charAt(0);
+  } else {
+    return tile_str.charAt(0);
   }
 }
 
@@ -117,6 +133,7 @@ function Game(game_id, player_id) {
     var that = this;
     var t = tile_str.split(":");
     var img = getImage("/tiles/" + t[0] + ".png");
+    var blank = getImage("/tiles/blank.png");
     var height = scaleTile(width);
     this.tid = t[1];
     this.str = tile_str;
@@ -136,23 +153,49 @@ function Game(game_id, player_id) {
     }
 
     this.centerX = function() {
-      return x + width/2;
+      return x + width*0.5;
     }
 
     this.centerY = function() {
-      return y + height/2;
+      return y + height*0.5;
     }
 
     this.render = function() {
-      if(img.is_ready) {
-        ctx.drawImage(img, x, y, width, height);
+      drawTile(t[0], x, y, width, height);
+    }
+
+    function drawTile(t0, x, y, width, height) {
+      var style = "small_tile";
+      if(t0.charAt(0) == "O") {
+        style = "small_blue";
+      } else if(t0.charAt(0) == "B") {
+        style = "small_green";
+      } else if(t0.charAt(0) == "C") {
+        style = "small_red";
+      } else if(t0.charAt(0) == "W") {
+        style = "small_tile";
+      } else if(["D","J","F"].indexOf(t0.charAt(0)) !== -1) {
+        style = null;
+      }
+      var textOnly = (style !== null) && showTileName; // && width != tileWidth;
+      var im = textOnly ? blank : img;
+      tryDrawImage(im, x, y, width, height);
+      if(textOnly) {
+        if(img.is_ready) {
+          ctx.drawImage(img, 20, 55, 127, 169, x+width*0.1, y+height*0.42, width*0.48, height*0.48);
+        }
+        drawText(that.shortName(), style, x+width*0.66, y+height*0.5, width*0.34, height*0.34);
+      }
+    }
+
+    function tryDrawImage(im, x, y, width, height) {
+      if(im.is_ready) {
+        ctx.drawImage(im, x, y, width, height);
       } else {
         ctx.setLineDash([1,1]);
+        ctx.lineWidth=1;
         ctx.strokeStyle='#000';
         ctx.strokeRect(x, y, width, height);
-      }
-      if(width == tileWidth && showTileName) {
-        drawText(this.name(), "tile", x+width*0.3, y-6);
       }
     }
 
@@ -163,12 +206,16 @@ function Game(game_id, player_id) {
         var newy = y+width/2-thei/2;
         newx = Math.min(Math.max(newx, 0), wid-twid);
         newy = Math.min(Math.max(newy, 0), hei-thei);
-        ctx.drawImage(img, newx, newy, twid, thei);
+        drawTile(t[0], newx, newy, twid, thei);
       }
     }
 
     this.name = function() {
       return niceName(tile_str);
+    }
+
+    this.shortName = function() {
+      return shortName(tile_str);
     }
 
     this.contains = function(xx, yy) {
@@ -187,6 +234,7 @@ function Game(game_id, player_id) {
     this.callback = callback;
     this.render = function() {
       ctx.setLineDash([1,1]);
+      ctx.lineWidth=1;
       ctx.strokeStyle='#000';
       ctx.strokeRect(x, y, width, height);
     }
@@ -256,7 +304,7 @@ function Game(game_id, player_id) {
   var actionTime = null; // suppress state updates when action was taken recently
   var actionDuration = 0.25;
   var exit = false;
-  var showTileName = !!(localStorage.getItem("show_tile_name"));
+  var showTileName = (localStorage.getItem("show_tile_name") != "false");
 
   var buttonWidth = 160;
   var logWidth = 450;
@@ -565,14 +613,14 @@ function Game(game_id, player_id) {
         mainText("Waiting for " + (4-np) + " more players.");
       }
     } else if(phase == "TRADING_MANDATORY") {
+      var dirs = [1, 2, -1, -1, 2, 1]
+      var dirStrs = ["right", "across", "left", "left", "across", "right"];
+      var trades = that.state.trades;
+      var dirStr = dirStrs[trades];
+      var dir = dirs[trades];
       if(that.state.commit_offered) {
-        mainText("Waiting for other players to pass.");
+        mainText("Waiting for other players to pass " + dirStr + ".");
       } else {
-        var dirs = [1, 2, -1, -1, 2, 1]
-        var dirStrs = ["right", "across", "left", "left", "across", "right"];
-        var trades = that.state.trades;
-        var dirStr = dirStrs[trades];
-        var dir = dirs[trades];
         var nextp = player_name(that.state.player_idx + dir);
         mainText("Select three tiles to pass " + dirStr + " to " + nextp + ".");
       }
@@ -727,10 +775,10 @@ function Game(game_id, player_id) {
     drawText(txt, "log", basex, basey+30);
     drawText("Tiles Remaining: " + that.state.deck_size, "log", basex, basey+45);
 
-    var btnText = showTileName ? "Hide Tile Names" : "Show Tile Names";
+    var btnText = showTileName ? "Use Chinese Tiles" : "Use English Tiles";
     var btn = new Button("show_tile_name", basex, basey+50, buttonWidth-10, 25, btnText, false, function() {
       showTileName = !showTileName;
-      localStorage.setItem("show_tile_name", showTileName);
+      localStorage.setItem("show_tile_name", ""+showTileName);
     });
     btn.render("small_button");
     buttons.push(btn);
@@ -878,11 +926,21 @@ function Game(game_id, player_id) {
   }
 
   function showHand() {
+    var y = hei-tileHeight*1.08;
+    var rimg = getImage("/img/rack7.jpg");
+    var rheight = tileHeight*1.115;
+    ctx.setLineDash([3,1]);
+    ctx.strokeStyle = '#622';
+    ctx.lineWidth = tileWidth*0.03;
+    if(rimg.is_ready) {
+      ctx.drawImage(rimg, 0, hei-rheight, tileWidth*14, rheight*1.04);
+    }
+    ctx.strokeRect(0, hei-rheight, tileWidth*14, rheight);
+
     var h = that.state.hand;
     var x = 0;
     for(let i = 0; i < h.length + 1; i++) {
       if(h[i] != drag_tile) {
-        var y = hei-tileHeight;
 
         var drop_target = new DropTarget(x, y, tileWidth, function(drag_tile) {
           insertTile(drag_tile, i);
@@ -1254,46 +1312,76 @@ function Game(game_id, player_id) {
     return width/179*240;
   }
 
-  function drawText(text, type, x, y) {
+  function drawText(text, type, x, y, width, height) {
+    ctx.fillStyle = "#000";
+    var tileFont = '"Chelsea"';
+    var mainFont = '"NotoSans"';
+    var center = false;
+    var font = "8px {mainFont}";
     if(type == "supermain") {
-      ctx.font = "40px Arial";
+      font = "40px {mainFont}";
       ctx.textAlign = "center";
     } else if(type == "main") {
-      ctx.font = "30px Arial";
+      font = "30px {mainFont}";
       ctx.textAlign = "center";
     } else if(type == "sub") {
-      ctx.font = "20px Arial";
+      font = "20px {mainFont}";
       ctx.textAlign = "center";
     } else if(type == "bold_sub") {
-      ctx.font = "bold 20px Arial";
+      font = "bold 20px {mainFont}";
       ctx.textAlign = "center";
     } else if(type == "heading") {
-      ctx.font = "bold 16px Arial";
+      font = "bold 16px {mainFont}";
       ctx.textAlign = "left";
     } else if(type == "name") {
-      ctx.font = "15px Arial";
+      font = "15px {mainFont}";
       ctx.textAlign = "left";
     } else if(type == "log") {
-      ctx.font = "15px Arial";
+      font = "15px {mainFont}";
       ctx.textAlign = "left";
     } else if(type == "bold_name") {
-      ctx.font = "bold 15px Arial";
+      font = "bold 15px {mainFont}";
       ctx.textAlign = "left";
     } else if(type == "button") {
-      ctx.font = "20px Arial";
+      font = "20px {mainFont}";
       ctx.textAlign = "left";
-      x -= ctx.measureText(text).width*0.5;
+      center = true;
     } else if(type == "small_button") {
-      ctx.font = "15px Arial";
+      font = "15px {mainFont}";
       ctx.textAlign = "left";
-      x -= ctx.measureText(text).width*0.5;
+      center = true;
     } else if(type == "tile") {
-      ctx.font = "15px Arial";
+      font = "15px {mainFont}";
       ctx.textAlign = "left";
+    } else if(type == "small_tile") {
+      font = "{hei}px {tileFont}";
+      ctx.textAlign = "left";
+      ctx.fillStyle = 'rgba(30,30,30,1.0)';
+      center = true;
+    } else if(type == "small_red") {
+      font = "{hei}px {tileFont}";
+      ctx.textAlign = "left";
+      ctx.fillStyle = 'rgba(180,0,0,1.0)';
+      center = true;
+    } else if(type == "small_green") {
+      font = "{hei}px {tileFont}";
+      ctx.textAlign = "left";
+      ctx.fillStyle = 'rgba(0,127,0,1.0)';
+      center = true;
+    } else if(type == "small_blue") {
+      font = "{hei}px {tileFont}";
+      ctx.textAlign = "left";
+      ctx.fillStyle = 'rgba(0,0,127,1.0)';
+      center = true;
     } else {
-      ctx.font = "8px Arial";
+      font = "8px {mainFont}";
     }
-    ctx.fillStyle = "#000";
+    ctx.font = font.replace("{mainFont}", mainFont)
+                   .replace("{tileFont}", tileFont)
+                   .replace("{hei}", height*0.8);
+    if(center) {
+      x -= ctx.measureText(text).width*0.5;
+    }
     ctx.fillText(text, x, y);
   }
 
