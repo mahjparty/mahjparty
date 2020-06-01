@@ -301,7 +301,7 @@ function Game(game_id, player_id) {
   var pname = localStorage.getItem("player_name") || "";
   var words = null;
   var actionTime = null; // suppress state updates when action was taken recently
-  var actionDuration = 0.25;
+  var actionDuration = 1.0;
   var exit = false;
   var showTileName = (localStorage.getItem("show_tile_name") != "false");
 
@@ -1428,18 +1428,21 @@ function Game(game_id, player_id) {
   function offerTile(drag_tile, pos, insert) {
     var off = that.state.offered;
     if(insert) {
-      off = insertList(off, drag_tile, pos);
-      that.state.offered = off;
+      that.state.offered = insertList(off, drag_tile, pos);
     } else {
-      if(pos < off.length) {
-        off[pos] = drag_tile;
-      } else {
-        off.push(drag_tile);
+      var res = [];
+      for(var i = 0; i <= off.length; i++) {
+        if(pos == i) {
+          res.push(drag_tile);
+        } else if(i < off.length && off[i] != drag_tile) {
+          res.push(off[i]);
+        }
       }
+      that.state.offered = res;
     }
     that.state.hand = removeTile(that.state.hand, drag_tile);
 
-    gquery("offer_tiles", {"tiles": sendTiles(off)});
+    gquery("offer_tiles", {"tiles": sendTiles(that.state.offered)});
   }
 
   this.loadState = function() {
@@ -1455,12 +1458,17 @@ function Game(game_id, player_id) {
   }
 
   function gquery(endpoint, data) {
-    actionTime = now();
+    var isAction = (endpoint != "game_state");
+    if(isAction) {
+      actionTime = now();
+    }
     data["game_id"] = game_id;
     data["player_id"] = player_id;
     query(endpoint, data, function(data) {
-      actionTime = null;
-      that.recvState(data)
+      if(isAction) {
+        actionTime = null;
+      }
+      that.recvState(data);
     });
   }
 
