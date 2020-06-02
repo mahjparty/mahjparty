@@ -116,7 +116,7 @@ def add_player():
 @app.route('/create_game')
 def create_game():
   game_id = rand_id()
-  game = Game(game_id)
+  game = Game(game_id, game_id_by_words)
   games[game_id] = game
   game_id_by_words[game.words_key()] = game_id
   return send({"game_id": game_id})

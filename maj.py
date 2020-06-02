@@ -279,14 +279,16 @@ def create_deck():
   return deck
 
 class Game:
-  def __init__(self, game_id):
+  def __init__(self, game_id, game_id_by_words):
     self.players = {}
     self.player_seq = []
     self.max_players = 4
     self.phase = GamePhase.WAITING_PLAYERS
     self.log_entries = []
     self.restart_game(None)
-    self.words = random.sample(word_data, 4)
+    self.words = None
+    while self.words is None or self.words_key() in game_id_by_words:
+      self.words = random.sample(word_data, 2)
     self.game_id = game_id
 
   def restart_game(self, player_id):

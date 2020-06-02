@@ -443,10 +443,9 @@ function Game(game_id, player_id) {
 
     function validWords(w) {
       var sp = (w || "").split(" ");
-      if(sp.length != 4) {
+      if(sp.length != 2) {
         return false;
       }
-      var valid = (sp.length == 4);
       for(var i = 0; i < sp.length; i++) {
         if(sp[i].length < 3) {
           return false;
@@ -479,7 +478,7 @@ function Game(game_id, player_id) {
       if(that.error && that.errorTime && (now()-that.errorTime) < errorDuration) {
         drawText(that.error, "main", wid/2, mainTextHeight+errOffset);
       } else {
-        drawText("Or join an existing game by entering the four code words:", "main", wid/2, mainTextHeight+errOffset);
+        drawText("Or join an existing game by entering the two code words:", "main", wid/2, mainTextHeight+errOffset);
       }
 
       var btnWid = 200;

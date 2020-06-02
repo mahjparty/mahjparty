@@ -25,7 +25,6 @@ ahead
 aid
 aim
 air
-akin
 alarm
 alike
 all
@@ -50,7 +49,6 @@ anxiety
 any
 apart
 apparent
-apt
 arch
 ardent
 are
@@ -123,7 +121,6 @@ bold
 bonds
 book
 border
-bosom
 both
 bought
 bow
@@ -208,11 +205,8 @@ dawn
 day
 dead
 debt
-deceive
 deed
-def
 degree
-del
 demand
 den
 depart
@@ -220,7 +214,6 @@ derive
 descend
 detail
 devil
-dick
 did
 die
 differ
@@ -236,7 +229,6 @@ dog
 doing
 dollar
 domain
-don
 doom
 double
 down
@@ -245,12 +237,10 @@ dragged
 dread
 dried
 drop
-drunk
 dry
 due
 duke
 dull
-dumb
 during
 dust
 duties
@@ -292,7 +282,6 @@ escape
 essence
 estate
 eternal
-ety
 even
 evidence
 exact
@@ -359,7 +348,6 @@ garden
 gas
 gate
 gave
-gay
 gaze
 general
 gesture
@@ -400,7 +388,6 @@ half
 hamilton
 hand
 happen
-harbour
 has
 hat
 have
@@ -455,7 +442,6 @@ inward
 iron
 island
 issue
-its
 jack
 james
 jealous
@@ -478,16 +464,13 @@ just
 keen
 kept
 key
-kill
 kind
-kiss
 kitchen
 knee
 knife
 knock
 labor
 lace
-lad
 laid
 lake
 lamp
@@ -505,7 +488,6 @@ left
 leg
 leisure
 lend
-les
 let
 level
 liable
@@ -583,16 +565,12 @@ mount
 move
 much
 mud
-murder
 muscles
 muttered
 myself
-naked
 name
 narrow
 nation
-naval
-nay
 near
 neck
 need
@@ -607,12 +585,10 @@ new
 next
 nice
 niece
-nigh
 nine
 nobility
 nodded
 noise
-non
 noon
 nose
 not
@@ -666,7 +642,6 @@ peace
 peculiar
 pen
 people
-per
 peter
 phrase
 physical
@@ -698,8 +673,6 @@ practice
 precious
 price
 probable
-prudence
-pseud
 public
 pull
 punish
@@ -737,12 +710,10 @@ repair
 request
 rescue
 retain
-rev
 reward
 rice
 rid
 rifle
-right
 ring
 rise
 rival
@@ -784,7 +755,6 @@ score
 sea
 second
 see
-seldom
 send
 separate
 series
@@ -799,7 +769,6 @@ shut
 shy
 sick
 side
-siege
 sigh
 silence
 similar
@@ -893,7 +862,6 @@ timber
 tin
 tired
 title
-tobacco
 today
 together
 told
@@ -962,7 +930,6 @@ visible
 vital
 vivid
 voice
-vol
 vote
 voyage
 vulgar
@@ -1001,7 +968,6 @@ wire
 wisdom
 wit
 wives
-woe
 woman
 won
 wood
@@ -1009,15 +975,12 @@ word
 would
 wrapped
 wreck
-write
 wrong
 yard
 year
 yellow
-yer
 yes
 yet
 yield
-yonder
 you
-zeal
+zoo
