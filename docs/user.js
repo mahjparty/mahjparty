@@ -716,7 +716,7 @@ function Game(game_id, player_id) {
     var phase = that.state.phase;
     if(phase == "START_TURN" && pending_action == "draw_tile") {
       if(that.state.your_turn) {
-        if (that.state.can_end_call_phase === null) {
+        if (that.state.can_end_call_phase_with_draw === null) {
           gquery("draw_tile", {});
           pending_action = "drawing_tile";
         }

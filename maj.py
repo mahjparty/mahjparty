@@ -298,7 +298,6 @@ class Game:
     self.next_player = 0
     self.discard_pile = []
     self.top_discard = None
-    self.call_idx = None
     self.maj = False
     self.draw_wait_duration = 5
     self.start_ts = datetime.datetime.now()
@@ -377,6 +376,7 @@ class Game:
         (self.can_hold(i, True) is None) for i in range(len(self.player_seq))
       ],
       "can_end_call_phase": self.can_end_call_phase(),
+      "can_end_call_phase_with_draw": self.can_end_call_phase_with_draw(),
       "call_idx": call_idx,
       "timeout_elapsed": self.timeout_elapsed(),
       "timeout_deadline": self.ts_to_epoch(self.timeout_deadline()),
@@ -632,7 +632,6 @@ class Game:
     else:
       self.next_player = nxt
     self.waive_state = dict()
-    self.call_idx = None
     self.maj = False
     self.start_ts = datetime.datetime.now()
     return None
@@ -671,7 +670,7 @@ class Game:
     if not self.is_player_turn(player_id):
       return "Not your turn"
 
-    res = self.can_end_call_phase()
+    res = self.can_end_call_phase_with_draw()
     if res is not None:
       return res
 
@@ -742,9 +741,6 @@ class Game:
     player_idx = self.find_player_idx(player_id)
     res = self.can_call(player_idx, is_maj)
     if res is None:
-      if self.call_idx is not None:
-        # Can't call again if you already lost priority
-        self.waive_state[self.player_seq[self.call_idx]] = WaiveState.WAIVED
       if is_maj:
         self.waive_state[player_id] = WaiveState.CALL_MAJ
       else:
@@ -839,6 +835,17 @@ class Game:
         ws = self.waive_state.get(pid, WaiveState.NONE)
         if ws == WaiveState.NONE and (self.can_hold(idx, True) is None):
           return "Waiting for calls"
+
+    return None
+
+  def can_end_call_phase_with_draw(self):
+    res = self.can_end_call_phase()
+    if res is not None:
+        return res
+
+    for pid, ws in self.waive_state.items():
+        if ws == WaiveState.CALL or ws == WaiveState.CALL_MAJ:
+            return "Somebody already called"
 
     return None
 
