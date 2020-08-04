@@ -954,7 +954,8 @@ function Game(game_id, player_id) {
 
     var h = that.state.hand;
     var x = 0;
-    for(let i = 0; i < h.length + 1; i++) {
+    var HAND_SIZE = 14;
+    for(let i = 0; i <= HAND_SIZE; i++) {
       if(h[i] != drag_tile) {
 
         var drop_target = new DropTarget(x, y, tileWidth, function(drag_tile) {
@@ -1068,7 +1069,8 @@ function Game(game_id, player_id) {
       });
       drop_target.render();
       drop_targets.push(drop_target);
-    } else if(phase=="START_TURN" && that.state.top_discard) {
+    }
+    if((phase=="START_TURN" || phase == "DISCARD") && that.state.top_discard) {
       var tile = new Tile(that.state.top_discard, x, y, tileWidth);
       tile.render();
       tile.zoomable = false;
@@ -1415,6 +1417,9 @@ function Game(game_id, player_id) {
   }
 
   function insertList(lst, tile, pos) {
+    if(pos > lst.length) {
+      pos = lst.length;
+    }
     var res = [];
     for(var i = 0; i <= lst.length; i++) {
       if(i == pos) {
