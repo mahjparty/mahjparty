@@ -592,6 +592,16 @@ function Game(game_id, player_id) {
     return Math.ceil(that.state.timeout_deadline-now());
   }
 
+  function getWaitingPlayers(committed) {
+    var names = [];
+    for(var i = 0; i < committed.length; i++) {
+      if(!committed[i]) {
+        names.push(that.state.player_names[i]);
+      }
+    }
+    return names;
+  }
+
   function showMainText() {
     var phase = that.state.phase;
 
@@ -623,7 +633,12 @@ function Game(game_id, player_id) {
       var dirStr = dirStrs[trades];
       var dir = dirs[trades];
       if(that.state.commit_offered) {
-        mainText("Waiting for other players to pass " + dirStr + ".");
+        var waiting = getWaitingPlayers(that.state.commit_offered_players);
+        if(waiting.length != 1) {
+          mainText("Waiting for " + waiting.length + " players to pass " + dirStr + ".");
+        } else {
+          mainText("Waiting for " + waiting[0] + " to pass " + dirStr + ".");
+        }
       } else {
         var nextp = player_name(that.state.player_idx + dir);
         mainText("Select three tiles to pass " + dirStr + " to " + nextp + ".");
@@ -638,7 +653,12 @@ function Game(game_id, player_id) {
         var nextp = player_name(that.state.player_idx + 2);
         mainText("Select " + num + " tile(s) to pass across to " + nextp + ".");
       } else {
-        mainText("Waiting for other players to pass.");
+        var waiting = getWaitingPlayers(that.state.commit_offered_players);
+        if(waiting.length != 1) {
+          mainText("Waiting for " + waiting.length + " players to pass.");
+        } else {
+          mainText("Waiting for " + waiting[0] + " to pass.");
+        }
       }
     } else if (phase == "DISCARD") {
       if(pending_action == "claim_maj") {

@@ -346,6 +346,9 @@ class Game:
          else None)
         for i in self.player_seq
       ],
+      "commit_offered_players": [
+          self.players[i].commit_offered for i in self.player_seq
+      ],
       "commit_offered": self.players[pid].commit_offered,
       "num_offered": self.players[pid].num_offered,
       "offered": self.players[pid].json_offered(),
