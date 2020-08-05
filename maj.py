@@ -310,6 +310,8 @@ class Game:
       self.log("{} started a new game.".format(player.name))
       for p in self.players.values():
         p.restart_game()
+
+      self.player_seq = self.player_seq[1:] + self.player_seq[:1]
       self.start_trading_phase()
 
   def words_key(self):
@@ -429,6 +431,7 @@ class Game:
       self.player_seq.append(player_id)
 
     if len(self.players) >= self.max_players:
+      random.shuffle(self.player_seq)
       self.start_trading_phase()
 
     return None
@@ -443,7 +446,6 @@ class Game:
     self.log("The initial hands have been dealt.")
 
   def start_trading_phase(self):
-    random.shuffle(self.player_seq)
     self.deal_tiles()
     self.phase = GamePhase.TRADING_MANDATORY
 
