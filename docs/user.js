@@ -1,5 +1,5 @@
 var alertCount = localStorage.getItem("alert_count") || 0;
-var host = localStorage.getItem("host") || ("https://api.mahj.party");
+var host = localStorage.getItem("host") || ("https://api.mahj.party:445");
 
 //https://developer.mozilla.org/en-US/docs/Web/API/XMLHttpRequest/response
 function query(endpoint, params, callback) {
